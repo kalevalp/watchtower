@@ -1,8 +1,8 @@
 {
-  "name": "lambda-shim",
-  "version": "1.14.2",
-  "description": "An secure execution shim for running AWS Lambda functions while monitoring and maintaining IFC",
-  "main": "lambda-shim.js",
+  "name": "recorder",
+  "version": "1.0.0",
+  "description": "Module in charge of recording external function interactions.",
+  "main": "recorder.js",
   "dependencies": {
     "auth": "file:../auth",
     "got": "^6.7.1",
