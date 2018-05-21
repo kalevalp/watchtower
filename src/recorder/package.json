@@ -4,14 +4,9 @@
   "description": "Module in charge of recording external function interactions.",
   "main": "recorder.js",
   "dependencies": {
-    "auth": "file:../auth",
     "got": "^6.7.1",
     "node-fetch": "^1.7.3",
     "nodemailer": "^4.3.1",
-    "po-utils": "file:../po-utils",
-    "secure-kv-po": "file:../secure-kv-po",
-    "secure-kv-to": "file:../secure-kv-to",
-    "to-utils": "file:../to-utils",
     "vm2": "latest"
   },
   "scripts": {

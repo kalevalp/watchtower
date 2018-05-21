@@ -12,35 +12,8 @@ const nodemailer = require("nodemailer");
 const got = require('got');
 const fetch = require('node-fetch');
 
-const rmFilesInDir = function (dirPath) {
-    try {
-        const files = fs.readdirSync(dirPath);
-
-        if (files.length > 0)
-            for (let i = 0; i < files.length; i++) {
-                const filePath = dirPath + '/' + files[i];
-                if (fs.statSync(filePath).isFile())
-                    fs.unlinkSync(filePath);
-                else
-                    rmFilesInDir(filePath);
-            }
-    }
-    catch(e) { }
-};
-
-const notEmptyDir = function (dirPath) {
-    try {
-        const files = fs.readdirSync(dirPath);
-        return files.length > 0;
-    }
-    catch(e) { return true; }
-};
-
 const conf = JSON.parse(fs.readFileSync('conf.json', 'utf8'));
 const unsecuredLambda = fs.readFileSync(conf.unsecLambda, 'utf8');
-
-
-const labelOrdering = conf.usingPO ? new PartialOrder(conf.labels) : new TotalOrder(conf.min, conf.max);
 
 module.exports.makeShim = function (exp, allowExtReq) {
     for (let handlerName of conf.handlers) {
@@ -57,88 +30,7 @@ module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
 
         exp[handlerName] = function (event, context, callback) {
 
-            let label;
-            let callbackSecurityBound;
-            let labelHistory = [];
-
-            let p;
-            const strippedEvent = event;
-            if (conf.runFromKinesis) { // Handle events originating from AWS Kinesis.
-
-                let ifcLabel;
-                let storedSecurityBound;
-                strippedEvent.Records = event.Records.map((record) => {
-                    const payload = new Buffer(record.kinesis.data, 'base64').toString();
-                    const parsed = JSON.parse(payload);
-                    if (!ifcLabel) {
-                        ifcLabel = parsed.ifcLabel;
-                    } else if (ifcLabel !== parsed.ifcLabel) {
-                        console.log("Batch of kinesis event with different labels unsupported.");
-                        return callback("Batch of kinesis event with different labels unsupported.");
-                    }
-                    delete parsed.ifcLabel;
-
-                    if (!storedSecurityBound) {
-                        storedSecurityBound = parsed.callbackSecurityBound;
-                    } else if (storedSecurityBound !== parsed.callbackSecurityBound) {
-                        console.log("Batch of kinesis event with different security bounds unsupported.");
-                        return callback("Batch of kinesis event with different security bounds unsupported.");
-                    }
-                    delete parsed.callbackSecurityBound;
-
-                    record.kinesis.data = new Buffer(JSON.stringify(parsed)).toString('base64');
-                    return record;
-                });
-
-                if (!ifcLabel) {
-                    console.log("Could not resolve an ifcLabel in kinesis event.")
-                    return callback("Could not resolve an ifcLabel in kinesis event.")
-                }
-                if (!storedSecurityBound) {
-                    console.log("Could not resolve a callbackSecurityBound in kinesis event.")
-                    return callback("Could not resolve a callbackSecurityBound in kinesis event.")
-                }
-
-                console.log(`Running kinesis event with label: ${ifcLabel}`);
-
-                callbackSecurityBound = storedSecurityBound;
-                console.log(`Running kinesis event with callbackSecurityBound: ${callbackSecurityBound}`);
-
-                p = Promise.resolve(ifcLabel);
-            } else if (conf.runFromSF /* && event.ifcLabel*/) { // Handle events originating from AWS Step Functions.
-                const sfLabel = event.ifcLabel;
-                delete strippedEvent.ifcLabel;
-
-                callbackSecurityBound = event.callbackSecurityBound;
-                delete strippedEvent.callbackSecurityBound;
-
-                p = Promise.resolve(sfLabel);
-            } else {
-                let reqUser;
-                let reqPass;
-
-                if (conf.runFromGET) { // Run http GET request on behalf of invoking user.
-                    reqUser = event.queryStringParameters.user;
-                    reqPass = event.queryStringParameters.pass;
-                    if (conf.userPassForIFCOnly) {
-                        delete event.queryStringParameters.user;
-                        delete event.queryStringParameters.pass;
-                    }
-                } else { // Run http POST request on behalf of invoking user.
-                    let reqBody;
-                    if ((typeof event.body) === "string") {
-                        reqBody = JSON.parse(event.body);
-                    } else {
-                        reqBody = event.body;
-                    }
-                    reqUser = reqBody.user;
-                    reqPass = reqBody.pass;
-
-                }
-                p = auth(reqUser, reqPass);
-            }
             const processEnv = {};
-
             for (let envVar of conf.processEnv) {
                 processEnv[envVar] = process.env[envVar];
             }
@@ -387,51 +279,10 @@ module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
                 },
             };
 
-            if (notEmptyDir('/tmp/')) {
-                console.log("WARNING : /tmp/ dir not empty on fresh invocation of lambda. Might lead to data leak.")
-            }
+            const vm = new NodeVM(executionEnv);
 
-            p.then((l) => {
-                if (l === undefined) {
-                    // In case getting the label failed, run on behalf of 'bottom' (completely unprivileged).
-                    label = labelOrdering.getBottom();
-                } else {
-                    label = l;
-                }
+            vm.run(originalLambdaScript, conf.secLambdaFullPath);
 
-                if (conf.callbackSecurityBound) { // Statically defined security bound
-                    callbackSecurityBound = conf.callbackSecurityBound;
-                } else if (conf.runFromKinesis) { // Not entirely sure what callback security bounds mean in the context
-                                                  // of kinesis and step functions.
-                    if (!callbackSecurityBound) {
-                        console.log("Kinesis event with no security bound.");
-                        return callback("Kinesis event with no security bound.");
-                    }
-                } else if (conf.runFromSF) {
-                    if (!callbackSecurityBound) {
-                        console.log("StepFunctions event with no security bound.");
-                        return callback("StepFunctions event with no security bound.");
-                    }
-                } else { // Running an http request - the security bound is the same as the invoking user's label.
-                    callbackSecurityBound = label;
-                }
-
-                const vm = new NodeVM(executionEnv);
-
-//                 console.log(`
-// //  ***********************************
-// //  ** Original Lambda Code:
-// ${unsecuredLambda}
-// //  ** End of Original Lambda Code:
-// //  ***********************************
-//
-// module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
-//
-//         `);
-
-                vm.run(originalLambdaScript, conf.secLambdaFullPath);
-            })
-                .catch(err => {console.log(err)});
         };
     }
 };
