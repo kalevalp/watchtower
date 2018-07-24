@@ -36,7 +36,19 @@ however, they are forced to contend with this lack of debug tools, on top of the
 need to switch programming paradigms. Consequently, they tend to resort to the
 most basic debug technique know to man---log printouts.
 
-
+The already-hard problem of debugging event-driven application is made
+significantly harder by the setting of serverless computing. The ephemeral
+nature of serverless function executions means that it is impossible to
+determine, a-priori, on which machine a function will be executed. This makes
+traditional techniques of remotely connecting to a running execution impossible
+to apply to the serverless setting without explicit support from the platform
+providers. Additionally, strict function timeouts mean that even if you
+successfully connect to a running function, debugging it is a race against the
+clock. Making matters even worse is the fact that no provider currently gives
+the option of freezing the execution of the entire system, as is common when
+debugging traditional multi-threaded applications. Thus, it is impossible to get
+a snapshot of the whole system state, which makes understanding the behaviour of
+the system as a whole a 
 
 % A few paragraph on whay debug is hard
 %
