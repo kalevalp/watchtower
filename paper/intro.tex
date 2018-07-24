@@ -5,8 +5,38 @@ by industry. Serverless platforms, pioneered by AWS Lambda, offer a combination
 of zero up-front cost, low maintenance, and a pay-as-you-go pricing model that
 allows low-cost software deployment % Cite papers on serverless savings.
 
-% A copule of paragraphs explaining what FaaS is.
-Serverless platforms, also known as Functions-as-a-Service (FaaS), provide an  
+Serverless platforms, also known as Functions-as-a-Service (FaaS), are cloud
+computing services that let users upload functions to the cloud, and define
+events, such as http requests, that trigger those functions. The cloud provider
+is then responsible for monitoring events, instantiating the execution
+environment (e.g. spinning up a vm that matches the function requirements), and
+invoking the function on the event inputs. 
+
+In order to facilitate this execution model, serverless functions must conform
+to some technical restrictions: serverless functions must be stateless, and
+short-lived. Serverless platforms do not make any guarantees on the reuse of
+execution environments, and consequently, a developer cannot rely on the state
+of the execution being preserved across invocations. Additionally, for technical
+reasons serverless function execution running times are capped (300s for most
+cloud providers).
+
+The main difference between serverless applications and traditional, monolithic
+applications is the event-driven programming model. While event-driven
+programming exists since at least the early 90s, it has not gained popularity
+outside of the domains of GUI and hardware programming. The main barrier for
+adoption being the the non-standard programming model, and the complexity of
+debugging event-driven applications. The vicious cycle of lack of popularity
+that leads to a lack of proper tooling that would otherwise ease the development
+process certainly did not help.
+
+The advent of serverless computing, with its myriad of benefits, seems to be
+forcing the hand of programmers and finally pushing event-driven programming
+into the mainstream. Once software developers migrate to serverless computing,
+however, they are forced to contend with this lack of debug tools, on top of the
+need to switch programming paradigms. Consequently, they tend to resort to the
+most basic debug technique know to man---log printouts.
+
+
 
 % A few paragraph on whay debug is hard
 %
