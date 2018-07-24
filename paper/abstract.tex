@@ -1,7 +1,27 @@
-%% Abstract
-%% Note: \begin{abstract}...\end{abstract} environment must come
-%% before \maketitle command
 \begin{abstract}
-Text of abstract \ldots.
+
+The rapid adoption of serverless computing by industry has been marred by a lack
+of adequate tooling for software development, with the most notable deficiencies
+in tools for monitoring and debugging serverless application deployed in
+public-cloud production environments.
+
+While several attempts to provide debug and monitoring solutions for serverless
+applications had been made by cloud providers and startups, a viable solution
+has yet to emerge. Consequently, most users resort to such bronze-age techniques
+as logging and finger-crossing to analyze executions.
+
+The lack of proper debug and monitoring tools is further compounded by the
+prevalent use of cloud-based distributed services, such as distributed databases
+that provide relaxed consistency guarantees, which are hard enough to debug in
+traditional environments.
+
+In this work we present a debugging technique for serverless applications, which
+combines run-time recording of function execution, with postmortem replay
+capabilities and a novel technique for root-cause analysis. Our system
+automatically detects potentially inconsistent reads in distributed databases,
+and gives users the ability to analyze the state of the database at various
+times in the execution of the application, as well as tie the each value the
+database to the specific function execution that produced it.
+
 \end{abstract}
 
