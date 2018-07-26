@@ -75,6 +75,26 @@ developers are fully aware of the consistency guarantees and plans for them, let
 alone in the arguably more common case of developers failing to account for
 unconventional consistency guarantees. 
 
+In this work we set about to closing this gap. We introduce \system, a
+\emph{record and replay} system for recording the execution of serverless
+applications in active deployment. \system lets the user rerun locally any
+function invocation in a way that faithfully recreates the function execution on
+the cloud. The user can then use a debugger to debug the execution of the
+function in the same way they would debug a monolithic application. When the
+user encounters an unexpected value in the database (an unexpected result of a
+database read call) \system provides the capabilities to jump to the function
+that originally wrote that to the database, and debug that function.
+Additionally, \system automatically detects inconsistent reads that may have
+resulted from the lax consistency guarantees made by the system, thus bringing
+this source of potential problems to the forefront of developer's attention.
+
+\subsection{Recording Serverless Application Executions}
+\subsection{Replaying Serverless Application Executions}
+\subsection{Database Time-Travel}
+
+\paragraph{Limitations}
+In this work we focus on serverless applications composed of Node.js functions.
+
 % A few paragraphs on the proposed solution
 %
 %   First, an explanation of the recording framework
