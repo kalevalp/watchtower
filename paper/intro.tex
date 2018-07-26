@@ -47,13 +47,12 @@ successfully connect to a running function, debugging it is a race against the
 clock. Making matters even worse is the fact that no provider currently gives
 the option of freezing the execution of the entire system, as is common when
 debugging traditional multi-threaded applications. Thus, it is impossible to get
-a snapshot of the whole system state, which makes understanding the behaviour of
-the system as a whole a 
+a snapshot of the whole system state, which significantly complicates the task
+of understanding the behaviour of the system as a whole.
+
+
 
 % A few paragraph on whay debug is hard
-%
-%   First, debug of detached, ephemeral, timed applications that you cannot
-%   connect to.
 %
 %   Second, the problem of tracing data provenance across function invocations
 %
