@@ -50,15 +50,30 @@ debugging traditional multi-threaded applications. Thus, it is impossible to get
 a snapshot of the whole system state, which significantly complicates the task
 of understanding the behaviour of the system as a whole.
 
+The reliance on databases to store the program state of serverless applications
+brings to the forefront the problem of data provenance tracking---the ability to
+identify, given a datum, the specific function invocation that produced that
+datum. Consider for example a debug session in which the programmer steps
+through an execution of a serverless function, and encounters a failure that is
+the result of an unexpected value stored in the database. In order to continue
+the debug process and discover the root cause of this failure, the user needs to
+determine what was the function execution that wrote this unexpected value to
+the database, and debug that function. In a local setting, where most shared
+state is stored in memory, all a user would have to do is rerun the execution
+with a conditional breakpoint that breaks the execution when a specific value is
+written to a specific variable. However, the serverless setting does not provide
+any way to rerun the execution (even when the bug is reproducible), or add
+variable watches or breakpoints. Following such a sequence of data provenance
+investigations to the root cause of the bug is a near-sisyphean undertaking.
 
-
-% A few paragraph on whay debug is hard
-%
-%   Second, the problem of tracing data provenance across function invocations
-%
-%   Third, handling data-races and relaxed consistency guarantees in distributed
-%   databases
-%
+Finally, the cloud setting usually involves the use of cloud services, which
+often provide relaxed consistency guarantees. For example, amazon's DynamoDB
+provides an eventual-consistency wherein data writes \emph{usually} propagate
+within 1 second. These consistency guarantees may lead to subtle bugs that occur
+or as a result of unexpected function invocation timings. This is true even when
+developers are fully aware of the consistency guarantees and plans for them, let
+alone in the arguably more common case of developers failing to account for
+unconventional consistency guarantees. 
 
 % A few paragraphs on the proposed solution
 %
