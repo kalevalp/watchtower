@@ -11,7 +11,7 @@ const conf = JSON.parse(fs.readFileSync('conf.json', 'utf8'));
 const unsecuredLambda = fs.readFileSync(conf.unsecLambda, 'utf8');
 
 
-function recordWrapper (call) {
+function recordWrapperCallback (call) {
     return (param, callback) => {
         console.log("#### Call log");
         console.log(JSON.stringify(param));
@@ -27,6 +27,56 @@ function recordWrapper (call) {
             callback(err, data)
 
         })
+    }
+}
+function recordWrapperPromise (call) {
+    return (param) => {
+        console.log("#### Call log");
+        console.log(JSON.stringify(param));
+        console.log("#### END Call log");
+
+        return call(param)
+            .then((data) => {
+
+                console.log("#### Response log");
+                console.log(JSON.stringify(data));
+                console.log("#### END Response log");
+
+                return data;
+            })
+            .catch((err) => {
+                console.log("#### Error response log");
+                console.log(JSON.stringify(err));
+                console.log("#### END Error response log");
+
+                return Promise.reject(err);
+            });
+    }
+}
+
+function recordWrapperPromiseTwoParams (call) {
+    return (fst, snd) => {
+        console.log("#### Call log");
+        console.log(JSON.stringify(fst));
+        console.log(JSON.stringify(snd));
+        console.log("#### END Call log");
+
+        return call(fst, snd)
+            .then((data) => {
+
+                console.log("#### Response log");
+                console.log(JSON.stringify(data));
+                console.log("#### END Response log");
+
+                return data;
+            })
+            .catch((err) => {
+                console.log("#### Error response log");
+                console.log(JSON.stringify(err));
+                console.log("#### END Error response log");
+
+                return Promise.reject(err);
+            });
     }
 }
 
@@ -72,17 +122,17 @@ module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
                             Kinesis: function () {
                                 const kinesis = new aws.Kinesis();
                                 return {
-                                    putRecord: recordWrapper(kinesis.putRecord),
+                                    putRecord: recordWrapperCallback(kinesis.putRecord),
                                 }
                             },
 
                             StepFunctions: function () {
                                 const stepfunctions = new aws.StepFunctions();
                                 return {
-                                    startExecution: recordWrapper(stepfunctions.startExecution),
-                                    getActivityTask: recordWrapper(stepfunctions.getActivityTask),
-                                    sendTaskFailure: recordWrapper(stepfunctions.sendTaskFailure),
-                                    sendTaskSuccess: recordWrapper(stepfunctions.sendTaskSuccess),
+                                    startExecution: recordWrapperCallback(stepfunctions.startExecution),
+                                    getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask),
+                                    sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure),
+                                    sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess),
                                 }
                             },
 
@@ -90,7 +140,7 @@ module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
                                 const rek = new aws.Rekognition();
 
                                 return {
-                                    detectLabels: recordWrapper(rek.detectLabels),
+                                    detectLabels: recordWrapperCallback(rek.detectLabels),
                                 }
                             },
                         },
@@ -99,72 +149,15 @@ module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
                                 const mailer = nodemailer.createTransport(params);
 
                                 return {
-                                    sendMail: (mailOptions) => {
-                                        let nmSecLabel;
-                                        if (conf.securityBounds &&
-                                            conf.securityBounds.nodemailer) {
-                                            nmSecLabel = conf.securityBounds.nodemailer;
-                                        } else {
-                                            nmSecLabel = "bottom";
-                                        }
-                                        if (conf.declassifiers &&
-                                            conf.declassifiers.nodemailer &&
-                                            labelOrdering.lte(label, conf.declassifiers.nodemailer.maxLabel) &&
-                                            labelOrdering.lte(conf.declassifiers.nodemailer.minLabel, nmSecLabel)) {
-
-                                            mailer.sendMail(eval(conf.declassifiers.nodemailer.code)(mailOptions));
-
-                                        } else if (labelOrdering.lte(label, nmSecLabel)) {
-                                            return mailer.sendMail(mailOptions);
-                                        } else {
-                                            throw "Attempting to send in violation with security policy"
-                                        }
-
-                                    }
+                                    sendMail: recordWrapperPromise(mailer.sendMail),
                                 }
                             },
-                            getTestMessageUrl: (info) => nodemailer.getTestMessageUrl(info),
+                            getTestMessageUrl: recordWrapperPromise(nodemailer.getTestMessageUrl),
                         },
                         'got' : {
-                            get: (uri, params) => {
-                                let gotSecLabel;
-                                if (conf.securityBounds &&
-                                    conf.securityBounds.got) {
-                                    gotSecLabel = conf.securityBounds.got;
-                                } else {
-                                    gotSecLabel = 'bottom';
-                                }
-                                if (conf.declassifiers &&
-                                    conf.declassifiers.got &&
-                                    labelOrdering.lte(label, conf.declassifiers.got.maxLabel) &&
-                                    labelOrdering.lte(conf.declassifiers.got.minLabel, gotSecLabel)) {
-                                    return got.get(eval(conf.declassifiers.got.uri)(uri), eval(conf.declassifiers.got.params)(params));
-                                } else if (labelOrdering.lte(label, gotSecLabel)) {
-                                    return got.get(uri, params);
-                                } else {
-                                    return Promise.reject("Attempting to access a url in violation with security policy");
-                                }
-                            }
+                            get: recordWrapperPromiseTwoParams(got.get),
                         },
-                        'node-fetch' : (params) => {
-                            let nodeFetchSecLabel;
-                            if (conf.securityBounds &&
-                                conf.securityBounds.nodeFetch) {
-                                nodeFetchSecLabel = conf.securityBounds.nodeFetch;
-                            } else {
-                                nodeFetchSecLabel = 'bottom';
-                            }
-                            if (conf.declassifiers &&
-                                conf.declassifiers.nodeFetch &&
-                                labelOrdering.lte(label, conf.declassifiers.nodeFetch.maxLabel) &&
-                                labelOrdering.lte(conf.declassifiers.nodeFetch.minLabel, nodeFetchSecLabel)) {
-                                return fetch(eval(conf.declassifiers.nodeFetch.params)(params));
-                            } else if (labelOrdering.lte(label, nodeFetchSecLabel)) {
-                                return fetch(params);
-                            } else {
-                                return Promise.reject("Attempting to access a url in violation with security policy");
-                            }
-                        }
+                        'node-fetch' : recordWrapperPromise(fetch)
                     }
                 },
             };
