@@ -8,7 +8,7 @@ const got = require('got');
 const fetch = require('node-fetch');
 
 const conf = JSON.parse(fs.readFileSync('conf.json', 'utf8'));
-const unsecuredLambda = fs.readFileSync(conf.unsecLambda, 'utf8');
+const originalLambda = fs.readFileSync(conf.originalLambda, 'utf8');
 
 
 function recordWrapperSync (call) {
@@ -79,7 +79,7 @@ module.exports.makeShim = function (exp, allowExtReq) {
         const originalLambdaScript = new VMScript(`
 //  ***********************************
 //  ** Original Lambda Code:
-${unsecuredLambda}
+${originalLambda}
 //  ** End of Original Lambda Code:
 //  ***********************************
 
