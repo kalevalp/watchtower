@@ -74,95 +74,104 @@ function recordWrapperPromise (call) {
     }
 }
 
-module.exports.makeShim = function (exp, allowExtReq) {
-    for (let handlerName of conf.handlers) {
-        const originalLambdaScript = new VMScript(`
+const originalLambdaScript = new VMScript(`
 //  ***********************************
 //  ** Original Lambda Code:
 ${originalLambda}
 //  ** End of Original Lambda Code:
 //  ***********************************
-
-module.exports.${handlerName}(externalEvent, externalContext, externalCallback);
         `);
 
 
-        exp[handlerName] = function (event, context, callback) {
+const processEnv = {};
+for (let envVar of conf.processEnv) {
+    processEnv[envVar] = process.env[envVar];
+}
 
-            const processEnv = {};
-            for (let envVar of conf.processEnv) {
-                processEnv[envVar] = process.env[envVar];
-            }
+let executionEnv = {
+    console: 'inherit',
+    sandbox: {
+        process: {
+            env: processEnv,
+        },
+        // externalEvent: event,
+        // externalContext: context,
+        // externalCallback: callback,
+        Math : new Proxy(Math, {get: (target, p) => p==="random" ? recordWrapperSync(Math.random()) : target[p]}),
+    },
+    require: {
+        context: 'sandbox',
+        external: true,
+        builtin: ['fs', 'url'],
+        root: "./",
+        mock: {
+            'aws-sdk': {
+                config: aws.config,
 
-            let executionEnv = {
-                console: 'inherit',
-                sandbox: {
-                    process: {
-                        env: processEnv,
-                    },
-                    externalEvent: event,
-                    externalContext: context,
-                    externalCallback: callback,
-                    Math : new Proxy(Math, {get: (target, p) => p==="random" ? recordWrapperSync(Math.random()) : target[p]}),
-                },
-                require: {
-                    context: 'sandbox',
-                    external: allowExtReq,
-                    builtin: ['fs', 'url'],
-                    root: "./",
-                    mock: {
-                        'aws-sdk': {
-                            config: aws.config,
-
-                            Kinesis: function () {
-                                const kinesis = new aws.Kinesis();
-                                return {
-                                    putRecord: recordWrapperCallback(kinesis.putRecord),
-                                }
-                            },
-
-                            StepFunctions: function () {
-                                const stepfunctions = new aws.StepFunctions();
-                                return {
-                                    startExecution: recordWrapperCallback(stepfunctions.startExecution),
-                                    getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask),
-                                    sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure),
-                                    sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess),
-                                }
-                            },
-
-                            Rekognition: function () {
-                                const rek = new aws.Rekognition();
-
-                                return {
-                                    detectLabels: recordWrapperCallback(rek.detectLabels),
-                                }
-                            },
-                        },
-                        'nodemailer' : {
-                            createTransport: (params) => {
-                                const mailer = nodemailer.createTransport(params);
-
-                                return {
-                                    sendMail: recordWrapperPromise(mailer.sendMail),
-                                }
-                            },
-                            getTestMessageUrl: recordWrapperPromise(nodemailer.getTestMessageUrl),
-                        },
-                        'got' : {
-                            get: recordWrapperPromise(got.get),
-                        },
-                        'node-fetch' : recordWrapperPromise(fetch)
+                Kinesis: function () {
+                    const kinesis = new aws.Kinesis();
+                    return {
+                        putRecord: recordWrapperCallback(kinesis.putRecord),
                     }
                 },
-            };
 
-            const vm = new NodeVM(executionEnv);
+                StepFunctions: function () {
+                    const stepfunctions = new aws.StepFunctions();
+                    return {
+                        startExecution: recordWrapperCallback(stepfunctions.startExecution),
+                        getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask),
+                        sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure),
+                        sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess),
+                    }
+                },
 
-            vm.run(originalLambdaScript, conf.secLambdaFullPath);
+                Rekognition: function () {
+                    const rek = new aws.Rekognition();
 
-        };
-    }
+                    return {
+                        detectLabels: recordWrapperCallback(rek.detectLabels),
+                    }
+                },
+            },
+            'nodemailer' : {
+                createTransport: (params) => {
+                    const mailer = nodemailer.createTransport(params);
+
+                    return {
+                        sendMail: recordWrapperPromise(mailer.sendMail),
+                    }
+                },
+                getTestMessageUrl: recordWrapperPromise(nodemailer.getTestMessageUrl),
+            },
+            'got' : {
+                get: recordWrapperPromise(got.get),
+            },
+            'node-fetch' : recordWrapperPromise(fetch)
+        }
+    },
 };
 
+const vm = new NodeVM(executionEnv);
 
+const vmExports = vm.run(originalLambdaScript, conf.secLambdaFullPath);
+
+
+for (let handlerName of conf.handlers) {
+    module.exports[handlerName] = function (event, context, callback) {
+
+        console.log("Recording Execution Context.");
+
+        console.log(JSON.stringify(event));
+        console.log(JSON.stringify(context));
+
+        vmExports[handlerName](event,context,(err, data) => {
+
+            console.log("Recording Callback.");
+
+            console.log(JSON.stringify(err));
+            console.log(JSON.stringify(data));
+
+            callback(err,data);
+        });
+    }
+}

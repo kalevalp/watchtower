@@ -1,3 +1,2 @@
-const rec = require('recorder');
+module.exports = require('recorder');
 
-rec.makeShim(module.exports);
