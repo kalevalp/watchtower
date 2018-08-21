@@ -1,6 +1,5 @@
 'use strict';
 module.exports.handler = (event, context, callback) => {
-    debugger;
 
     const x = 2;
     const y = 3;
