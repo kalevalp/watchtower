@@ -161,15 +161,25 @@ for (let handlerName of conf.handlers) {
 
         console.log("Recording Execution Context.");
 
+        console.log("#### EVENT ####");
         console.log(JSON.stringify(event));
+        console.log("#### EVENTEND ####");
+
+        console.log("#### CONTEXT ####");
         console.log(JSON.stringify(context));
+        console.log("#### CONTEXTEND ####");
 
         vmExports[handlerName](event,context,(err, data) => {
 
             console.log("Recording Callback.");
 
+            console.log("#### CBACKERR ####");
             console.log(JSON.stringify(err));
+            console.log("#### CBACKERREND ####");
+
+            console.log("#### CBACKDATA ####");
             console.log(JSON.stringify(data));
+            console.log("#### CBACKDATAEND ####");
 
             callback(err,data);
         });
