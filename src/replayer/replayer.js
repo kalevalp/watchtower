@@ -102,14 +102,22 @@ var cloudwatchlogs = new aws.CloudWatchLogs({region: "us-west-1"});
 
 var params = {
     logGroupName: '/aws/lambda/hello-world-recorded-dev-hello',
-    logStreamName: '2018/08/20/[$LATEST]f18b94a01da2400085ce026912702ec8',
+    logStreamNames: ['2018/08/20/[$LATEST]f18b94a01da2400085ce026912702ec8'],
+    // filterPattern: 'START RequestId\\\:', // Doesn't work!!
+    // filterPattern: '"4cabcdff-"',
+    // filterPattern: '4cabcdff',
+    filterPattern: '"4cabcdff-a4ba-11e8-aaeb-d37728f6aa8f"',
+    // filterPattern: 'RequestId',
+    // filterPattern: 'START RequestId',
+    // filterPattern: 'START',
+    // filterPattern: '4cabcdff-a4ba-11e8-aaeb-d37728f6aa8f',
     // endTime: 0,
     // limit: 0,
     // nextToken: 'STRING_VALUE',
     // startFromHead: true || false,
     // startTime: 0
 };
-cloudwatchlogs.getLogEvents(params, function(err, data) {
+cloudwatchlogs.filterLogEvents(params, function(err, data) {
     if (err) console.log(err, err.stack); // an error occurred
     else {
         // console.log(data);
@@ -120,7 +128,7 @@ cloudwatchlogs.getLogEvents(params, function(err, data) {
         const eventMessageString = data.events[eventIdx + 1].message;
 
         const eventString = eventMessageString.slice(eventMessageString.indexOf("\t{"));
-        const event = JSON.parse(eventString)
+        const event = JSON.parse(eventString);
 
         vmModule.runReplayed(event, {}, () => {});
 
