@@ -6,6 +6,7 @@ const aws = require("aws-sdk");
 const nodemailer = require("nodemailer");
 const got = require('got');
 const fetch = require('node-fetch');
+const {getInvocationTuple, getValueSync} = require("rnr-utils");
 
 const conf = JSON.parse(fs.readFileSync('conf.json', 'utf8'));
 const originalLambda = fs.readFileSync(conf.originalLambda, 'utf8');
@@ -39,12 +40,12 @@ let executionEnv = {
         // externalEvent: event,
         // externalContext: context,
         // externalCallback: callback,
-        Math : new Proxy(Math, {get: (target, p) => p==="random" ? recordWrapperSync(Math.random()) : target[p]}),
+        Math : new Proxy(Math, {get: (target, p) => p==="random" ? () => getValueSync("Math.random") : target[p]}),
     },
     require: {
         context: 'sandbox',
         external: true,
-        builtin: ['fs', 'url'],
+        builtin: ['*'],
         root: "./",
         // mock: {
         //     'aws-sdk': {
@@ -97,40 +98,13 @@ const vm = new NodeVM(executionEnv);
 
 const vmModule = vm.run(originalLambdaScript, conf.secLambdaFullPath);
 
-var cloudwatchlogs = new aws.CloudWatchLogs({region: "us-west-1"});
 
+function replay(groupName, streamName, invocationID) {
+    return getInvocationTuple( groupName, streamName, invocationID )
+        .then(([event, context]) => {
+            vmModule.runReplayed(event, context, () => {
+            });
+        });
+}
 
-var params = {
-    logGroupName: '/aws/lambda/hello-world-recorded-dev-hello',
-    logStreamNames: ['2018/08/20/[$LATEST]f18b94a01da2400085ce026912702ec8'],
-    // filterPattern: 'START RequestId\\\:', // Doesn't work!!
-    // filterPattern: '"4cabcdff-"',
-    // filterPattern: '4cabcdff',
-    filterPattern: '"4cabcdff-a4ba-11e8-aaeb-d37728f6aa8f"',
-    // filterPattern: 'RequestId',
-    // filterPattern: 'START RequestId',
-    // filterPattern: 'START',
-    // filterPattern: '4cabcdff-a4ba-11e8-aaeb-d37728f6aa8f',
-    // endTime: 0,
-    // limit: 0,
-    // nextToken: 'STRING_VALUE',
-    // startFromHead: true || false,
-    // startTime: 0
-};
-cloudwatchlogs.filterLogEvents(params, function(err, data) {
-    if (err) console.log(err, err.stack); // an error occurred
-    else {
-        // console.log(data);
-
-        debugger;
-
-        const eventIdx = data.events.findIndex(e => e.message.indexOf('\t#### EVENT ####\n') > -1);
-        const eventMessageString = data.events[eventIdx + 1].message;
-
-        const eventString = eventMessageString.slice(eventMessageString.indexOf("\t{"));
-        const event = JSON.parse(eventString);
-
-        vmModule.runReplayed(event, {}, () => {});
-
-    }           // successful response
-});
+module.exports.replay = replay;

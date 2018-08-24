@@ -6,73 +6,10 @@ const aws = require("aws-sdk");
 const nodemailer = require("nodemailer");
 const got = require('got');
 const fetch = require('node-fetch');
+const {recordWrapperSync, recordWrapperCallback, recordWrapperPromise} = require("rnr-utils");
 
 const conf = JSON.parse(fs.readFileSync('conf.json', 'utf8'));
 const originalLambda = fs.readFileSync(conf.originalLambda, 'utf8');
-
-
-function recordWrapperSync (call) {
-    return function () {
-        console.log("#### Call log");
-        console.log(JSON.stringify(arguments));
-        console.log("#### END Call log");
-
-        const res = call(...arguments);
-
-        console.log("#### Result log");
-        console.log(JSON.stringify(res));
-        console.log("#### END Result log");
-
-        return res;
-    }
-}
-
-function recordWrapperCallback (call) {
-    return function () {
-        console.log("#### Call log");
-        console.log(JSON.stringify(arguments)); // JSON.stringify returns a JSON representation of the object - i.e. no functions.
-        console.log("#### END Call log");
-
-        const cb = arguments[arguments.length-1];
-
-        arguments[arguments.length-1] = (err, data) => {
-
-            console.log("#### Response log");
-            console.log(JSON.stringify(err));
-            console.log(JSON.stringify(data));
-            console.log("#### END Response log");
-
-            cb(err, data)
-
-        };
-
-        return call(...arguments);
-    }
-}
-function recordWrapperPromise (call) {
-    return function () {
-        console.log("#### Call log");
-        console.log(JSON.stringify(arguments));
-        console.log("#### END Call log");
-
-        return call(...arguments)
-            .then((data) => {
-
-                console.log("#### Response log");
-                console.log(JSON.stringify(data));
-                console.log("#### END Response log");
-
-                return data;
-            })
-            .catch((err) => {
-                console.log("#### Error response log");
-                console.log(JSON.stringify(err));
-                console.log("#### END Error response log");
-
-                return Promise.reject(err);
-            });
-    }
-}
 
 const originalLambdaScript = new VMScript(`
 //  ***********************************
@@ -97,12 +34,12 @@ let executionEnv = {
         // externalEvent: event,
         // externalContext: context,
         // externalCallback: callback,
-        Math : new Proxy(Math, {get: (target, p) => p==="random" ? recordWrapperSync(Math.random()) : target[p]}),
+        Math : new Proxy(Math, {get: (target, p) => p==="random" ? recordWrapperSync(Math.random,"Math.random") : target[p]}),
     },
     require: {
         context: 'sandbox',
         external: true,
-        builtin: ['fs', 'url'],
+        builtin: ['*'],
         root: "./",
         mock: {
             'aws-sdk': {
@@ -111,17 +48,17 @@ let executionEnv = {
                 Kinesis: function () {
                     const kinesis = new aws.Kinesis();
                     return {
-                        putRecord: recordWrapperCallback(kinesis.putRecord),
+                        putRecord: recordWrapperCallback(kinesis.putRecord, "aws-sdk.Kinesis.putRecord"),
                     }
                 },
 
                 StepFunctions: function () {
                     const stepfunctions = new aws.StepFunctions();
                     return {
-                        startExecution: recordWrapperCallback(stepfunctions.startExecution),
-                        getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask),
-                        sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure),
-                        sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess),
+                        startExecution: recordWrapperCallback(stepfunctions.startExecution, "aws-sdk.StepFunctions.startExecution"),
+                        getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask, "aws-sdk.StepFunctions.getActivityTask"),
+                        sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure, "aws-sdk.StepFunctions.sendTaskFailure"),
+                        sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess, "aws-sdk.StepFunctions.sendTaskSuccess"),
                     }
                 },
 
@@ -129,24 +66,37 @@ let executionEnv = {
                     const rek = new aws.Rekognition();
 
                     return {
-                        detectLabels: recordWrapperCallback(rek.detectLabels),
+                        detectLabels: recordWrapperCallback(rek.detectLabels, "aws-sdk.Rekognition.detectLabels"),
                     }
                 },
+                S3: function () {
+                    const s3 = new aws.S3();
+                    return new Proxy(s3, {get: (target, p) =>
+                            p==="putObject" ? (params, callback) => {
+                                    params.Tagging = params.Tagging ? params.Tagging + "&" : "";
+
+                                    params.Tagging = params.Tagging + "execid=" + invocationID;
+
+                                    return recordWrapperCallback((params, cb) => s3.putObject(params, cb),"aws-sdk.s3.putobject")(params, callback);
+                                } :
+                                p==="getObject" ? recordWrapperCallback((params, cb) => s3.getObject(params, cb),"aws-sdk.S3.getObject") :
+                                    target[p]});
+                }
             },
             'nodemailer' : {
                 createTransport: (params) => {
                     const mailer = nodemailer.createTransport(params);
 
                     return {
-                        sendMail: recordWrapperPromise(mailer.sendMail),
+                        sendMail: recordWrapperPromise(mailer.sendMail, "nodemailer.sendMail"),
                     }
                 },
-                getTestMessageUrl: recordWrapperPromise(nodemailer.getTestMessageUrl),
+                getTestMessageUrl: recordWrapperPromise(nodemailer.getTestMessageUrl,"nodemailer.getTestMessageUrl"),
             },
             'got' : {
-                get: recordWrapperPromise(got.get),
+                get: recordWrapperPromise(got.get, "got.get"),
             },
-            'node-fetch' : recordWrapperPromise(fetch)
+            'node-fetch' : recordWrapperPromise(fetch, "node-fetch.fetch")
         }
     },
 };
@@ -155,9 +105,12 @@ const vm = new NodeVM(executionEnv);
 
 const vmExports = vm.run(originalLambdaScript, conf.secLambdaFullPath);
 
+let invocationID;
 
 for (let handlerName of conf.handlers) {
     module.exports[handlerName] = function (event, context, callback) {
+
+        invocationID = context.invokeid;
 
         console.log("Recording Execution Context.");
 
