@@ -1,0 +1,5 @@
+{
+  "originalLambda" : "handler.js",
+  "handlers" : ["handler"],
+  "processEnv" : []
+}

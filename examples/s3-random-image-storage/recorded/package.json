@@ -1,0 +1,19 @@
+{
+  "name": "s3-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Kalev Alpernas <kalev.alp@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^2.2.0",
+    "recorder": "file:../../../src/recorder"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.301.0",
+    "replayer": "file:../../../src/replayer"
+  }
+}
