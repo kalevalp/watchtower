@@ -66,7 +66,7 @@ let executionEnv = {
                     const rek = new aws.Rekognition();
 
                     return {
-                        detectLabels: recordWrapperCallback(rek.detectLabels, "aws-sdk.Rekognition.detectLabels"),
+                        detectLabels: recordWrapperCallback((params, cb) => rek.detectLabels(params, cb), "aws-sdk.Rekognition.detectLabels"),
                     }
                 },
                 S3: function () {
