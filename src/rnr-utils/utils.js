@@ -17,6 +17,12 @@ function getAndAdvanceCounter(identifier) {
     return counter[identifier]++;
 }
 
+function flushCounters() {
+    for (const c in counter) {
+        counter[c] = 0;
+    }
+}
+
 function recordWrapperSync (call, identifier) {
     if (!identifier) {
         throw "In recordWrapperSync. Can't call recorder without identifier.";
@@ -147,6 +153,8 @@ module.exports.recordWrapperPromise = recordWrapperPromise;
 
 module.exports.getInvocationTuple = getInvocationTuple;
 module.exports.getValueSync = getValueSync;
+
+module.exports.flushCounters = flushCounters;
 
 //
 // debugger;

@@ -6,7 +6,7 @@ const aws = require("aws-sdk");
 const nodemailer = require("nodemailer");
 const got = require('got');
 const fetch = require('node-fetch');
-const {recordWrapperSync, recordWrapperCallback, recordWrapperPromise} = require("rnr-utils");
+const {recordWrapperSync, recordWrapperCallback, recordWrapperPromise, flushCounters} = require("rnr-utils");
 
 const conf = JSON.parse(fs.readFileSync('conf.json', 'utf8'));
 const originalLambda = fs.readFileSync(conf.originalLambda, 'utf8');
@@ -109,6 +109,7 @@ let invocationID;
 
 for (let handlerName of conf.handlers) {
     module.exports[handlerName] = function (event, context, callback) {
+        flushCounters();
 
         invocationID = context.invokeid;
 
