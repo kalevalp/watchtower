@@ -65,6 +65,9 @@ functions:
       - http:
           path: users/create
           method: get
+    role:
+      'Fn::GetAtt': [ S3ImageStorageRole, Arn ]
+
 #      - s3: ${env:BUCKET}
 #      - schedule: rate(10 minutes)
 #      - sns: greeter-topic
@@ -105,10 +108,11 @@ functions:
 
 
 
+
 resources:
   Resources:
     # Roles
-    S3ImageStorageRole: # role for Categories Lambda
+    S3ImageStorageRole:
       Type: AWS::IAM::Role
       Properties:
         Path: /
@@ -120,9 +124,28 @@ resources:
             Action: sts:AssumeRole
             Principal:
               Service: lambda.amazonaws.com
-#        ManagedPolicyArns:
-#        - ${self:custom.private.teamPolicy}
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
         Policies:
+#        - PolicyName: CreateAndWriteToLogStream
+#          PolicyDocument:
+#            Version: '2012-10-17'
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#              - 'logs:CreateLogStream'
+#              Resource:
+#                Fn::GetAtt: [ ReceiveLogGroup, Arn ]
+#            - Effect: Allow
+#              Action:
+#              - 'logs:PutLogEvents'
+#              Resource:
+#                Fn::Join:
+#                - ':'
+#                - - Fn::GetAtt: [ ReceiveLogGroup, Arn ]
+#                  - '*'
+#        - ${self:custom.productPhotos.getPhotoAssignment}
         - PolicyName: StoreImageInBucket
           PolicyDocument:
             Version: '2012-10-17'
@@ -130,4 +153,35 @@ resources:
             - Effect: Allow
               Action:
               - 's3:putObject'
-              Resource: arn:aws:s3:::rnrtempbucket
+              Resource: arn:aws:s3:::rnrtempbucket/*
+#        - PolicyName: SucceedActivityTask
+
+
+
+#
+#resources:
+#  Resources:
+#    # Roles
+#    S3ImageStorageRole: # role for Categories Lambda
+#      Type: AWS::IAM::Role
+#      Properties:
+#        Path: /
+#        RoleName: S3ImageStorageRole
+#        AssumeRolePolicyDocument:
+#          Version: '2012-10-17'
+#          Statement:
+#          - Effect: Allow
+#            Action: sts:AssumeRole
+#            Principal:
+#              Service: lambda.amazonaws.com
+##        ManagedPolicyArns:
+##        - ${self:custom.private.teamPolicy}
+#        Policies:
+#        - PolicyName: StoreImageInBucket
+#          PolicyDocument:
+#            Version: '2012-10-17'
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#              - 's3:putObject'
+#              Resource: arn:aws:s3:::rnrtempbucket
