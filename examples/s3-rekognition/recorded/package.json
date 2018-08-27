@@ -10,5 +10,8 @@
   "license": "ISC",
   "devDependencies": {
     "aws-sdk": "^2.301.0"
+  },
+  "dependencies": {
+    "recorder": "file:../../../src/recorder"
   }
 }
