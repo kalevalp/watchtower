@@ -1,0 +1,69 @@
+\section{Prototype Implementation}
+We have implemented an initial prototype in order to assess the applicability
+of our approach to debugging real world application.
+
+\subsection{Recording Serverless Application Executions}
+The goal of the record subsystem of \system is to record all sources of
+non-determinism in the program execution. Due to Node.js's single-threaded
+design, the only sources of non-determinism are built-in and external library
+calls (e.g. calls to \verb|Math.random()|, or the results of web calls).
+
+We note that our approach does not require that the runtime be single-threaded.
+Indeed, the topic of recording executions of multi-threaded application has
+been extensively researched.
+
+\system uses a sandboxing mechanism (vm2) to capture calls to internal and
+external libraries, and records the results of the calls to these libraries.
+The record subsystem then logs the results of the calls along with sufficient metadata for the replay subsystem to recreate the execution.
+
+\paragraph{Recording Consideration}
+While it is possible to record all function calls to all libraries in the application, this is not advisable, as every augmented function call leads to an increased consumption of resources---whether by increasing the amount of logged data, or by increasing the execution time overhead caused by the call to the proxy object\footnote{The execution time overheads, in our experiments, have been very small, usually under 10ms. Still, \emph{waste not, want not}.}.
+
+Thus, it falls on the user to identify libraries and function calls that may be
+a source of non-determinism in the execution. We envision this task as one that
+would fall to a system architect-level principal, especially in organizations
+with strict centralized supervision of the modules used in the system.
+Alternatively, these libraries could be fleshed out \TODO{flashed??} in a
+process of trial-and-error, albeit at the price of losing the ability to replay
+some of the recorded execution.
+
+\subsection{Replaying Serverless Application Executions}
+Execution replay is performed locally on the user's system. The replay
+subsystem accesses the cloud logging service, and retrieves the execution log
+of the given function. it then uses a sandbox to capture library calls, in much
+the same way as in the record subsystem. However, unlike the record subsystem,
+the replay subsystem bypasses the library altogether, and instead replaces the library call with the previously recorded result of the function call. Thus, the local execution faithfully recreates the original execution.
+
+The user can then use any debugging mechanism to debug the run. We have successfully used Node's built-in debugger, as well as the deugging facilities of Jetbrain WebStorm.
+
+\subsection{Recording and Resolving Provenance}
+While recording and replaying a function execution might be sufficient to understand the local behaviour of that function, it is usually not enough to debug the system as a whole. Complex bugs may require debugging several different function invocation, as the effect of a problem might manifest itself in a different invocation than the one in which it originated.
+
+The main challenge here is connecting data in the system to the function that originated that data. We take advantage of the fact that persistent data in serverless applications must be stored in some data storage service (e.g. AWS S3), and use our sandbox set-up to capture writes to the data-store and annotate every object written with the execution id of the function that produced it.
+
+When a subsequent function execution reads that object from the store, the record subsystem will also log the execution id of the function that produced the object. This way, if a user encounters an unexpected value returned from the data-store, they have all the information they need to then transition to debugging the execution that produced the object in the first place.
+
+\subsection{Full Logging vs. Time Travel vs. Recoverable data}
+The results of accesses to the persistent data-store are not sources of non-determinism. However, in order to be able to fully replay a recorded execution, the value must be in the store at \emph{replay time}. This is not necessarily the case in most application, as values are usually updated or removed during the lifecycle of the application's deployment.
+
+There are several ways overcome this problem. The first, and the one currently used by our prototype, is to record the results of all data-store calls. The second approach is to use versioning (storing multiple versions of the same object) or time-travel (the data-store providing a snapshot view of the store, as it were at some specific time in the past) in the data-store. This approach reduces the amount of data stored in the logging service, at the expense of storing more data in the data-store. Depending on the pricing models of the different cloud vendors, this might be a better approach, but its applicability depends on the data-store having support for versioning or time-travel. The third approach is recreating the result of a data-store call by recursively replaying the producing function execution and computing the data produced. This approach reduces the amount of data stored, at the expense of processing time at replay.
+
+\subsection{Limitations}
+Our current prototype only supports a single runtime environment, namely
+Node.js 8.10 running on Amazon AWS Lambda.
+
+We have implemented recording proxies for a handful of Node.js modules.
+However, implementing additional recording proxies is trivial, and can be
+performed on a case-by-case basis. In the future, we plan to automate this
+process, in much the same way as Bluebird and other Node.js promise modules
+provide automated \verb|promisify| functionality.
+
+Additionally, the only cloud storage service we currently support is AWS S3. We
+see no inherent reason why this support cannot be extended to other storage
+systems. Depending on the complexity and available APIs of the storage system,
+this task may present some challenges. However, this only needs to be done once
+per storage service, and there is only a handful of public storage services
+that needs to be address. Naturally, vendor support would make the task
+significantly simpler.
+
+
