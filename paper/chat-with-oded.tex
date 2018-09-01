@@ -1,0 +1,17 @@
+\section{Summary of Chat With Oded}
+
+\subsection{Minimizing Recorded Set}
+Main idea: use backward code analysis in execution time to only record enough
+data about the execution to be able to recreate the execution using an SMT
+solver and the program semantics.
+
+\subsection{Data Store Recording Optimizations}
+Main idea: Only record writes to data-store. On read, only record the invocation
+id of the function. When recreating the run, get the read value directly from
+the write source.
+
+\subsection{Static Analysis-Theoretic Questions}
+Main idea: Try to formalize the behaviours of the record-and-replay system. e.g.
+how does the replay relate to the original run. Is it a simulation? Can it be
+formalized as an abstract interpretation?
+
