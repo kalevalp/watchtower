@@ -81,6 +81,23 @@ let executionEnv = {
                                 } :
                                 p==="getObject" ? recordWrapperCallback((params, cb) => s3.getObject(params, cb),"aws-sdk.S3.getObject") :
                                     target[p]});
+                },
+                DynamoDB: function (options) {
+                    const ddb = new aws.DynamoDB(options);
+                    return new Proxy(ddb, {get: (target, p) =>
+                            p==="putItem" ?
+                                (params, callback) => {
+                                    params.Item.execId = invocationID;
+
+                                    return recordWrapperCallback((params, cb) => target.putItem(params, cb), "aws-sdk.dynamodb.putItem")(params, callback);
+                                } :
+                                p==="getItem" ?
+                                    (params, callback) => {
+                                        return recordWrapperCallback((ps, cb) => target.getItem(ps, cb))(params, callback)
+                                    } :
+                                target[p]
+                    })
+
                 }
             },
             'nodemailer' : {
