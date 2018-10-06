@@ -27,7 +27,7 @@ property.event = (update) => {
 
             }// Do something
             else {
-                if (data.Attributes !== {}) {
+                if (Object.keys(data.Attributes) !== 0) {
                     // Violation!
                 }
             }
