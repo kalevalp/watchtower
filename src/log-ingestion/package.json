@@ -1,8 +1,8 @@
 {
-  "name": "log-monitor",
+  "name": "log-ingestion",
   "version": "1.0.0",
   "description": "Serverless function that receives an incoming log stream, and uses it to monitor a security property.",
-  "main": "monitor.js",
+  "main": "ingestion.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

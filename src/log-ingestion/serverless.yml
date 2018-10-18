@@ -1,0 +1,162 @@
+service: log-monitor-test
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+
+  # you can overwrite defaults here
+  stage: dev
+  region: us-west-1
+
+functions:
+  log-monitor:
+    handler: ingestion.handler
+    events:
+    - cloudwatchLog: '/aws/lambda/scratch'
+    role:
+      'Fn::GetAtt': [ EventWriterRole, Arn ]
+
+resources:
+  Resources:
+    EventsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: type
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+        KeySchema:
+        - AttributeName: type
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: monitoredEvents
+#        TableName: ${self:custom.stage}-ProductCategory-${self:custom.productCatalogBuilderVersion}
+
+    EventWriterRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+#        RoleName: ${self:custom.stage}ProductCatalogBuilder${self:custom.productCatalogBuilderVersion}
+        RoleName: EventWriterRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+#          - Effect: Allow
+#            Action: sts:AssumeRole
+#            Principal:
+#              AWS: # role ARNs that are allowed to write to the Product Catalog
+##              - 'arn:aws:iam::${self:custom.private.accountId}:role/${self:custom.private.teamRole}'
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+        Policies:
+          - PolicyName: CreateAndWriteToLogStream
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              - Effect: Allow
+                Action:
+                - 'logs:CreateLogStream'
+                Resource: '*'
+  #                Fn::GetAtt: [ CatalogLogGroup, Arn ]
+              - Effect: Allow
+                Action:
+                - 'logs:PutLogEvents'
+                Resource: '*'
+  #                Fn::Join:
+  #                - ':'
+  #                - - Fn::GetAtt: [ CatalogLogGroup, Arn ]
+  #                  - '*'
+          - PolicyName: BatchWriteToEventTable
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              -  Effect: Allow
+                 Action:
+                 - 'dynamodb:BatchWriteItem'
+                 Resource:
+                   Fn::Join:
+                   - '/'
+#                   - - 'arn:aws:dynamodb:${self:provider.region}:${self:custom.private.accountId}:table'
+                   - - 'arn:aws:dynamodb:us-west-1:432356059652:table'
+                     - Ref: EventsTable
+
+#resources:
+#  Resources:
+#    # Roles
+#    S3ImageRekognitionRole:
+#      Type: AWS::IAM::Role
+#      Properties:
+#        Path: /
+#        RoleName: S3ImageRekognitionRole
+#        AssumeRolePolicyDocument:
+#          Version: '2012-10-17'
+#          Statement:
+#          - Effect: Allow
+#            Action: sts:AssumeRole
+#            Principal:
+#              Service: lambda.amazonaws.com
+#        ManagedPolicyArns:
+#        - arn:aws:iam::aws:policy/AdministratorAccess
+#
+#        Policies:
+#        - PolicyName: StoreImageLabelsInBucket
+#          PolicyDocument:
+#            Version: '2012-10-17'
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#              - 's3:putObject'
+#              Resource: arn:aws:s3:::rnrtempbucket/*
+#        - PolicyName: ReadImageFromBucket
+#          PolicyDocument:
+#            Version: '2012-10-17'
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#              - 's3:putObject'
+#              Resource: arn:aws:s3:::rnrtempbucket/*
+#        - PolicyName: RunRekognition
+#          PolicyDocument:
+#            Version: '2012-10-17'
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#              - 'rekognition:*'
+#              Resource: '*'
+
+
+
+#
+#resources:
+#  Resources:
+#    # Roles
+#    S3ImageRekognitionRole: # role for Categories Lambda
+#      Type: AWS::IAM::Role
+#      Properties:
+#        Path: /
+#        RoleName: S3ImageRekognitionRole
+#        AssumeRolePolicyDocument:
+#          Version: '2012-10-17'
+#          Statement:
+#          - Effect: Allow
+#            Action: sts:AssumeRole
+#            Principal:
+#              Service: lambda.amazonaws.com
+##        ManagedPolicyArns:
+##        - ${self:custom.private.teamPolicy}
+#        Policies:
+#        - PolicyName: StoreImageInBucket
+#          PolicyDocument:
+#            Version: '2012-10-17'
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#              - 's3:putObject'
+#              Resource: arn:aws:s3:::rnrtempbucket
