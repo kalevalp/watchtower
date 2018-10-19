@@ -92,3 +92,5 @@ jspm_packages
 .serverless
 
 package-lock.json
+
+private.yml
