@@ -18,9 +18,12 @@ functions:
     - cloudwatchLog:
         logGroup: '/aws/lambda/scratch'
         filter: '"#####EVENTUPDATE"'
-
     role:
       'Fn::GetAtt': [ EventWriterRole, Arn ]
+    environment:
+      EVENT_TABLE:
+        Ref: EventsTable
+
 
 resources:
   Resources:
