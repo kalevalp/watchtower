@@ -9,7 +9,9 @@ function processEvent(e) {
         const user = e.params[0];
         const mailingList = e.params[2];
 
-    } else if (e.type.match(/CREATEEMAIL/)) {
+        if (!subscriptions[user].has(mailingList)) throw "PROPERTY VIOLATION";
+
+    // } else if (e.type.match(/CREATEEMAIL/)) {
 
     } else if (e.type.match(/SUBSCRIBE/)) {
         const user = e.params[0];
