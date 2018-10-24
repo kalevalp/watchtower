@@ -1,8 +1,6 @@
 const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
 
-const events = ['SEND'];
-
 const propertyInstances = {};
 
 function getEvents (collectedEvents, params) {
@@ -38,7 +36,7 @@ module.exports.monitorFactory = (instantiateProperty) => {
             .then(results => results.sort((a, b) => a.timestamp - b.timestamp)) // Sort by timestamp
             .then(results => {
                 for (let i = 0; i < results.length - 1; i++) {
-                    if (results[i].timestamp == results[i+1].timestamp) {
+                    if (results[i].timestamp === results[i+1].timestamp) {
                         // TODO: Handle potential race
                     }
                 }

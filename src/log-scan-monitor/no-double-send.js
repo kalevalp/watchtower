@@ -21,6 +21,8 @@
 
 const {monitorFactory} = require('./monitor');
 
+const events = ['SEND'];
+
 function instantiateProperty(address, email) {
     let currentState;
 
@@ -30,4 +32,15 @@ function instantiateProperty(address, email) {
     }
 }
 
+const instances = {};
+
+function processEvent(e) {
+    if (e.type.match(/SEND/)) {
+        if  (instances[e.params])  throw "PROPERTY VIOLATION";
+        else instances[e.params] = true;
+    }
+}
+
 module.exports.handler = monitorFactory(instantiateProperty);
+
+// function
