@@ -1,2 +1,2 @@
-# phonograph
-A record-replay framework for serverless applications
+# watchtower
+A runtime safety property monitoring framework for serverless applications
