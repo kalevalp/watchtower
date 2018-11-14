@@ -3,16 +3,6 @@
   "version": "1.0.0",
   "description": "Module in charge of recording external function interactions.",
   "main": "recorder.js",
-  "dependencies": {
-    "got": "^6.7.1",
-    "node-fetch": "^1.7.3",
-    "nodemailer": "^4.3.1",
-    "vm2": "latest",
-    "rnr-utils": "../rnr-utils"
-  },
-  "devDependencies": {
-    "aws-sdk": "^2.301.0"
-  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
