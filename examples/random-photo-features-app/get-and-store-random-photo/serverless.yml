@@ -1,0 +1,51 @@
+service: get-and-store-random-photo
+
+custom: ${file(../custom.yml)}
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  deploymentBucket: ${self:custom.deploymentBucket}
+  stage: ${self:custom.stage}
+  profile: ${self:custom.profile}
+  region: ${self:custom.region}
+
+
+functions:
+  store-image:
+    handler: handler.handler
+
+    events:
+      - http:
+          path: users/create
+          method: get
+    role:
+      'Fn::GetAtt': [ S3ImageStorageRole, Arn ]
+
+resources:
+  Resources:
+    # Roles
+    S3ImageStorageRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: S3ImageStorageRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+        Policies:
+        - PolicyName: StoreImageInBucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - 's3:putObject'
+              Resource: arn:aws:s3:::rnrtempbucket/*
