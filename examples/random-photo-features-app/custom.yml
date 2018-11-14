@@ -1,0 +1,4 @@
+stage: dev
+region: us-west-2
+deploymentBucket: random-photo-features-app
+profile: default
