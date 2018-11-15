@@ -12,7 +12,7 @@ provider:
 
 
 functions:
-  extract-features:
+  extractFeatures:
     handler: handler.handler
 
     events:
@@ -65,3 +65,17 @@ resources:
               Action:
               - 'rekognition:*'
               Resource: '*'
+
+  Outputs:
+    FeatureExtractionName:
+      Description: The Name of the Feature Extraction Lambda
+      Value:
+        Ref: ExtractFeaturesLambdaFunction
+      Export:
+        Name: FeatureExtractionLambdaFunctionName
+    FeatureExtractionArn:
+      Description: The Arn of the Feature Extraction Lambda
+      Value:
+        'Fn::GetAtt': [ ExtractFeaturesLambdaFunction, Arn ]
+      Export:
+        Name: FeatureExtractionLambdaFunctionArn

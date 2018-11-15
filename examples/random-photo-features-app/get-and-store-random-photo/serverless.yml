@@ -12,7 +12,7 @@ provider:
 
 
 functions:
-  store-image:
+  fetchAndStore:
     handler: handler.handler
 
     events:
@@ -49,3 +49,17 @@ resources:
               Action:
               - 's3:putObject'
               Resource: arn:aws:s3:::rnrtempbucket/*
+
+  Outputs:
+    RandomImageFetchName:
+      Description: The Name of the Random Image Fetch Lambda
+      Value:
+        Ref: FetchAndStoreLambdaFunction
+      Export:
+        Name: RandomImageFetchLambdaFunctionName
+    RandomImageFetchArn:
+      Description: The Arn of the Random Image Fetch Lambda
+      Value:
+        'Fn::GetAtt': [ FetchAndStoreLambdaFunction, Arn ]
+      Export:
+        Name: RandomImageFetchLambdaFunctionArn
