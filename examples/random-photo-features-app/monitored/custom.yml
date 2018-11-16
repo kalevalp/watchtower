@@ -1,7 +1,7 @@
 # Scoping rules. Assumes current file is loaded from within a subdirectory.
 private: ${file(../private.yml)}
 
-stage: dev
+stage: dev-monitored
 region: us-west-2
 deploymentBucket: random-photo-features-app
 profile: default
