@@ -1,0 +1,11 @@
+Comment: Download a random photo from the web, save it in S3, and call an image feature extraction service on the image
+StartAt: FetchAndSaveRandomImage
+States:
+  FetchAndSaveRandomImage:
+    Type: Task
+    Resource: ${self:custom.fetchAndSaveArn}
+    Next: ExtractFeatures
+  ExtractFeatures:
+    Type: Task
+    Resource: ${self:custom.extractFeaturesArn}
+    End: true

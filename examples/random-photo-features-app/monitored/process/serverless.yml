@@ -1,0 +1,68 @@
+service: image-get-and-process-step-function
+
+custom: ${file(../custom.yml)}
+#  stage: ${opt:stage, self:provider.stage, self:custom.private.stage}
+#  private: ${file(../../private.yml)}
+#  helloRetail: ${file(../../helloRetail.yml)}
+#  retailStream: ${file(../../retail-stream/serverless.yml)}
+#  retailStreamVersion: 1
+#  productPhotos: ${file(../productPhotos.yml)}
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  deploymentBucket: ${self:custom.deploymentBucket}
+  profile: ${self:custom.profile}
+  region: ${self:custom.region}
+
+resources:
+  Resources:
+    # Role
+    StepFunctionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:custom.stage}RandomPhotoFeaturesStepFunction
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: states.${self:custom.region}.amazonaws.com
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        Policies:
+        - PolicyName: InvokeLambdas
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - 'lambda:InvokeFunction'
+              Resource:
+#              - arn:aws:lambda:us-west-2:432356059652:function:get-and-store-random-photo-dev-store-image
+#              - arn:aws:lambda:us-west-2:432356059652:function:feature-extraction-dev-extract-features
+              - 'Fn::ImportValue': FeatureExtractionLambdaFunctionArn
+              - 'Fn::ImportValue': RandomImageFetchLambdaFunctionArn
+    # Step Function
+    StepFunction:
+      Type: 'AWS::StepFunctions::StateMachine'
+      Properties:
+        DefinitionString: '${file(features.js):shim}'
+        RoleArn:
+          'Fn::GetAtt': [ StepFunctionRole, Arn ]
+
+#  Outputs:
+#    PhotoAssignmentsStepFunctionName:
+#      Description: The name of the Photo Assignments Step Function
+#      Value:
+#        'Fn::GetAtt': [StepFunction, Name]
+#      Export:
+#        Name: ${self:custom.productPhotos.exportPhotoAssignmentsStepFunctionName}
+#    PhotoAssignmentsStepFunctionArn:
+#      Description: The ARN of the Photo Assignments Step Function
+#      Value:
+#        Ref: StepFunction
+#      Export:
+#        Name: ${self:custom.productPhotos.exportPhotoAssignmentsStepFunctionArn}
