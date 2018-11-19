@@ -1,27 +1,69 @@
-'use strict';
-
-const aws = require('aws-sdk');
+const recorder = require('recorder');
+const aws      = require('aws-sdk');
+const crypto   = require('crypto');
 
 const s3  = new aws.S3();
 const rek = new aws.Rekognition();
 
-const bucket = process.env.S3_BUCKET ? process.env.S3_BUCKET : "rnrtempbucket";
+const mock = {
+    'aws-sdk' : {
+        S3: () => ({
+            getObject: (params) => ({
+                promise: () => s3.getObject(params)
+                    .promise()
+                    .then(data => {
+                        const image = data.Body;
 
-module.exports.handler = async (event) => {
+                        const hash = crypto.createHash('sha256');
+                        hash.update(image.toString());
+                        const imageHash = hash.digest('hex');
 
-    console.log(event);
+                        const bucket = params.Bucket;
+                        const objectKey = params.Key;
+                        console.log(`#####EVENTUPDATE[IMAGE_GET(${bucket},${objectKey},${imageHash})]#####`);
+                        return data;
+                    }),
+            }),
+            putObject: (params) => ({
+                promise: () => s3.getObject(params)
+                    .promise()
+                    .then(data => {
+                        const features = params.Body;
 
-    const randomID  = event.randomID;
-    const photoKey  = `photo_${randomID}.jpg`;
-    const labelsKey = `photo_${randomID}_labels.txt`;
+                        const hash = crypto.createHash('sha256');
+                        hash.update(features.toString());
+                        const featuresHash = hash.digest('hex');
 
-    console.log(photoKey);
-    console.log(labelsKey);
+                        const bucket = params.Bucket;
+                        const objectKey = params.Key;
+                        console.log(`#####EVENTUPDATE[FEATURES_PUT(${bucket},${objectKey},${featuresHash})]#####`);
+                        return data;
+                    }),
+            }),
+        }),
+        Rekognition: () => ({
+            detectLabels: (params) => ({
+                promise: () => rek.detectLabels(params)
+                    .promise()
+                    .then(data => {
+                        const image = params.Image.Bytes;
 
-    return s3.getObject({ Bucket: bucket, Key: photoKey }).promise()
-        .then(data => rek.detectLabels({ Image: { Bytes: data.Body }, MaxLabels: 10, MinConfidence: 50 }).promise())
-        .then(data => s3.putObject({ Body: JSON.stringify(data.Labels), Bucket: bucket, Key: labelsKey }).promise())
-        .catch(err => Promise.reject(new Error(err)));
+                        let hash = crypto.createHash('sha256');
+                        hash.update(image.toString());
+                        const imageHash = hash.digest('hex');
+
+                        hash = crypto.createHash('sha256');
+                        const features = JSON.stringify(data.Labels);
+                        hash.update(features);
+                        const featuresHash = hash.digest('hex');
+
+                        console.log(`#####EVENTUPDATE[DETECT_LABELS(${imageHash},${featuresHash})]#####`);
+                        return data;
+                    }),
+            }),
+        }),
+    }
 };
 
 
+module.exports.handler = recorder.createRecordingHandler('original-handler.js','handler',mock);
