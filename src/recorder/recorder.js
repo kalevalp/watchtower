@@ -3,16 +3,11 @@
 const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
 
-const originalLambdaFile    = process.env['ORIGINAL_LAMBDA_FILE'];
-const originalLambdaHandler = process.env['ORIGINAL_LAMBDA_HANDLER'];
-const originalLambdaPath    = `/var/task/${originalLambdaFile}`;
-// const originalLambdaPath    = `${__dirname}/${originalLambdaFile}`;
+function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock) {
 
-const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
-
-const originalLambdaScript  = new VMScript(originalLambdaCode);
-
-function createRecordingHandler(module, mock) {
+    const originalLambdaPath    = `/var/task/${originalLambdaFile}`;
+    const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
+    const originalLambdaScript  = new VMScript(originalLambdaCode);
 
     let executionEnv = {
         console: 'inherit',
@@ -20,11 +15,12 @@ function createRecordingHandler(module, mock) {
             process: process,
         },
         require: {
-            context: 'sandbox',
+            // context: 'sandbox',
             external: true,
             builtin: ['*'],
-            root: "./",
+            // root: "./",
             mock: mock,
+            // import: [], // Might be a useful optimization. Test at some point.
         },
     };
 
@@ -32,5 +28,7 @@ function createRecordingHandler(module, mock) {
 
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
-    module.exports[originalLambdaHandler] = vmExports[originalLambdaHandler];
+    return vmExports[originalLambdaHandler];
 }
+
+module.exports.createRecordingHandler = createRecordingHandler;

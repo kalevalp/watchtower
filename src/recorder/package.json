@@ -11,5 +11,8 @@
     "Lambda"
   ],
   "author": "Kalev Alpernas <kalev.alp@gmail.com>",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "vm2": "^3.6.4"
+  }
 }
