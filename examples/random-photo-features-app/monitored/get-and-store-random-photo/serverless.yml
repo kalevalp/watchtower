@@ -1,6 +1,6 @@
 service: get-and-store-random-photo
 
-custom: ${file(../custom.yml)}
+custom: ${file(../shared.yml)}
 
 provider:
   name: aws
@@ -63,10 +63,9 @@ resources:
         'Fn::GetAtt': [ FetchAndStoreLambdaFunction, Arn ]
       Export:
         Name: RandomImageFetchLambdaFunctionArn
-
-    RandomImageFetchLogGroupName:
-      Description: The Name of the Random Image Fetch Lambda Log Group
-      Value:
-        Ref: FetchAndStoreLogGroup
-      Export:
-        Name: RandomImageFetchLogGroupName
+#    RandomImageFetchLogGroupName:
+#      Description: The Name of the Random Image Fetch Lambda Log Group
+#      Value:
+#        Ref: FetchAndStoreLogGroup
+#      Export:
+#        Name: ${self:custom.exports.RandomImageFetchLogGroupName}

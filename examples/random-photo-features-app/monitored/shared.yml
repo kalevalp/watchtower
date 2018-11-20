@@ -1,0 +1,21 @@
+# Scoping rules. Assumes current file is loaded from within a subdirectory.
+private: ${file(../private.yml)}
+
+stage: dev-monitored
+region: us-west-2
+deploymentBucket: random-photo-features-app
+profile: default
+
+# Scoping rules. Assumes current file is always loaded in self:custom.
+fetchAndSaveArn: arn:aws:lambda:${self:custom.region}:${self:custom.private.account}:function:get-and-store-random-photo-${self:custom.stage}-fetchAndStore
+extractFeaturesArn: arn:aws:lambda:${self:custom.region}:${self:custom.private.account}:function:feature-extraction-${self:custom.stage}-extractFeatures
+
+exports:
+  FeatureExtractionLogGroupName: FeatureExtractionLogGroupName
+  RandomImageFetchLogGroupName: RandomImageFetchLogGroupName
+
+
+logGroupNames:
+#  logStream: '/aws/lambda/feature-extraction-dev-monitored-extractFeatures'
+  logStream:
+    'Fn::ImportValue': '${self:custom.exports.FeatureExtractionLogGroupName}'
