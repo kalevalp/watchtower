@@ -1,6 +1,6 @@
 service: feature-extraction
 
-custom: ${file(../custom.yml)}
+custom: ${file(../shared.yml)}
 
 provider:
   name: aws

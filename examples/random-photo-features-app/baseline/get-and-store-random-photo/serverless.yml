@@ -1,6 +1,6 @@
 service: get-and-store-random-photo
 
-custom: ${file(../custom.yml)}
+custom: ${file(../shared.yml)}
 
 provider:
   name: aws
