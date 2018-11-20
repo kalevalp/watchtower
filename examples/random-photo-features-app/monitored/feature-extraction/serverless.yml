@@ -79,3 +79,9 @@ resources:
         'Fn::GetAtt': [ ExtractFeaturesLambdaFunction, Arn ]
       Export:
         Name: FeatureExtractionLambdaFunctionArn
+    FeatureExtractionLogGroupName:
+      Description: The Name of the Feature Extraction Lambda Log Group
+      Value:
+        Ref: ExtractFeaturesLogGroup
+      Export:
+        Name: FeatureExtractionLogGroupName

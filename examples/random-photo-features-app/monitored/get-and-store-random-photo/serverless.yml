@@ -63,3 +63,10 @@ resources:
         'Fn::GetAtt': [ FetchAndStoreLambdaFunction, Arn ]
       Export:
         Name: RandomImageFetchLambdaFunctionArn
+
+    RandomImageFetchLogGroupName:
+      Description: The Name of the Random Image Fetch Lambda Log Group
+      Value:
+        Ref: FetchAndStoreLogGroup
+      Export:
+        Name: RandomImageFetchLogGroupName
