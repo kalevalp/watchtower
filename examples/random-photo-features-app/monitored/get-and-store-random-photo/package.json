@@ -10,7 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "node-fetch": "^2.2.0",
-    "randomstring": "^1.1.5"
+    "randomstring": "^1.1.5",
+    "recorder": "file:../../../../src/recorder"
   },
   "devDependencies": {
     "aws-sdk": "^2.301.0"
