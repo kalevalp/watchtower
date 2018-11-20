@@ -8,7 +8,7 @@ const s3 = new aws.S3();
 
 const bucket = process.env.S3_BUCKET ? process.env.S3_BUCKET : "rnrtempbucket";
 
-module.exports.handler = async (e, c, cb) => {
+module.exports.handler = async () => {
 
     const randomID = randomstring.generate();
     const photoKey = `photo_${randomID}.jpg`;
@@ -25,5 +25,5 @@ module.exports.handler = async (e, c, cb) => {
         .then(response => response.buffer())
         .then(buffer => s3.putObject({ Body: buffer, Bucket: bucket, Key: photoKey }).promise())
         .then(() => ({randomID}))
-        .catch(() => Promise.reject(new Error("Failed putting image to bucket.")));
+        .catch(err => Promise.reject(new Error(err)));
 };
