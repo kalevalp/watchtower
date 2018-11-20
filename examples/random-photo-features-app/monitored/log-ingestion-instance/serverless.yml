@@ -1,22 +1,24 @@
-service: log-monitor-test
+service: random-features-monitor
 
-custom:
-  private: ${file(./private.yml)}
-  stage: dev
+custom: ${file(../shared.yml)}
 
 provider:
   name: aws
   runtime: nodejs8.10
-  region: us-west-1
-  deploymentBucket: 'temporal-property-monitor-${self:custom.stage}'
-
+  deploymentBucket: ${self:custom.deploymentBucket}
+  stage: ${self:custom.stage}
+  profile: ${self:custom.profile}
+  region: ${self:custom.region}
 
 functions:
-  log-monitor:
-    handler: ingestion.handler
+  ingestion:
+    handler: handler.handler
     events:
     - cloudwatchLog:
-        logGroup: '/aws/lambda/scratch'
+        logGroup: ${self:custom.logGroupNames.FeatureExtractionLogGroupName}
+        filter: '"#####EVENTUPDATE"'
+    - cloudwatchLog:
+        logGroup: ${self:custom.logGroupNames.RandomImageFetchLogGroupName}
         filter: '"#####EVENTUPDATE"'
     role:
       'Fn::GetAtt': [ EventWriterRole, Arn ]
@@ -27,11 +29,11 @@ functions:
 
 resources:
   Resources:
-    EventIngestionLogGroup:
-      Type: AWS::Logs::LogGroup
-      Properties:
-        LogGroupName: /aws/lambda/${self:service}-${self:custom.stage}-event-ingestion
-        RetentionInDays: 7
+#    EventIngestionLogGroup:
+#      Type: AWS::Logs::LogGroup
+#      Properties:
+#        LogGroupName: /aws/lambda/${self:service}-${self:custom.stage}-event-ingestion
+#        RetentionInDays: 7
     EventsTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -62,24 +64,26 @@ resources:
             Action: sts:AssumeRole
             Principal:
               Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
         Policies:
-          - PolicyName: CreateAndWriteToLogStream
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-              - Effect: Allow
-                Action:
-                - 'logs:CreateLogStream'
-                Resource:
-                  Fn::GetAtt: [ EventIngestionLogGroup, Arn ]
-              - Effect: Allow
-                Action:
-                - 'logs:PutLogEvents'
-                Resource:
-                  Fn::Join:
-                  - ':'
-                  - - Fn::GetAtt: [ EventIngestionLogGroup, Arn ]
-                    - '*'
+#          - PolicyName: CreateAndWriteToLogStream
+#            PolicyDocument:
+#              Version: '2012-10-17'
+#              Statement:
+#              - Effect: Allow
+#                Action:
+#                - 'logs:CreateLogStream'
+#                Resource:
+#                  Fn::GetAtt: [ EventIngestionLogGroup, Arn ]
+#              - Effect: Allow
+#                Action:
+#                - 'logs:PutLogEvents'
+#                Resource:
+#                  Fn::Join:
+#                  - ':'
+#                  - - Fn::GetAtt: [ EventIngestionLogGroup, Arn ]
+#                    - '*'
           - PolicyName: BatchWriteToEventTable
             PolicyDocument:
               Version: '2012-10-17'
@@ -90,5 +94,5 @@ resources:
                  Resource:
                    Fn::Join:
                    - '/'
-                   - - 'arn:aws:dynamodb:${self:provider.region}:${self:custom.private.accountId}:table'
+                   - - 'arn:aws:dynamodb:${self:provider.region}:${self:custom.private.account}:table'
                      - Ref: EventsTable

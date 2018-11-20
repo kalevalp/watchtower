@@ -16,6 +16,7 @@ exports:
 
 
 logGroupNames:
-#  logStream: '/aws/lambda/feature-extraction-dev-monitored-extractFeatures'
-  logStream:
-    'Fn::ImportValue': '${self:custom.exports.FeatureExtractionLogGroupName}'
+  FeatureExtractionLogGroupName: '/aws/lambda/feature-extraction-dev-monitored-extractFeatures'
+  RandomImageFetchLogGroupName: '/aws/lambda/get-and-store-random-photo-dev-monitored-fetchAndStore'
+#  logStream:
+#    'Fn::ImportValue': '${self:custom.exports.FeatureExtractionLogGroupName}'
