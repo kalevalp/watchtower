@@ -7,7 +7,7 @@ const ddb = new aws.DynamoDB();
 
 const eventUpdateRE = /\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
-function createIngestionHandler (tableName) {
+function createIngestionHandler (tableName, properties) {
     return async function (event) {
         const payload = new Buffer(event.awslogs.data, 'base64');
 
@@ -21,15 +21,33 @@ function createIngestionHandler (tableName) {
             if (eventUpdate) {
                 const eventType = eventUpdate[2];
                 const eventParams = eventUpdate[3].split(',');
-                const entry = {
-                    type: eventType, // Partition Key
-                    id: logEvent.id.toString(), // Sort Key
-                    params: eventParams,
-                    timestamp: logEvent.timestamp.toString(),
-                    logGroup: logBatch.logGroup,
-                    logStream: logBatch.logStream,
-                };
-                entries.push(entry);
+                for (const prop of properties) {
+                    if (prop.predicates.events[eventType]) {
+                        const e = prop.predicates.events[eventType];
+
+                        let propinstKey = prop.name;
+
+                        for (const qvar of prop.quantifiedVariables) {
+                            if (e.quantifierMap[qvar]) {
+                                propinstKey+=qvar;
+                                propinstKey+=eventParams[e.quantifierMap[qvar]];
+                            }
+                        }
+
+                        const entry = {
+                            propinst: propinstKey, // Partition Key
+                            id: logEvent.id.toString(), // Sort Key
+                            type: eventType,
+                            params: eventParams,
+                            timestamp: logEvent.timestamp.toString(),
+                            logGroup: logBatch.logGroup,
+                            logStream: logBatch.logStream,
+                        };
+                        entries.push(entry);
+                    }
+                }
+            } else {
+                throw `Malformed event in log: ${logEvent}`;
             }
         }
 
@@ -55,8 +73,9 @@ function createIngestionHandler (tableName) {
                 const putRequest = {
                     PutRequest: {
                         Item: {
-                            "type": {S: item.type},
+                            "propinst": {S: item.propinst},
                             "id": {S: item.id},
+                            "type": {S: item.type},
                             "params": {SS: item.params},
                             "timestamp": {N: item.timestamp},
                             "logGroup": {S: item.logGroup},
