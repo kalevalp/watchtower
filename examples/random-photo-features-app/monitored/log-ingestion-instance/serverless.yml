@@ -38,12 +38,12 @@ resources:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
-        - AttributeName: type
+        - AttributeName: propinst
           AttributeType: S
         - AttributeName: id
           AttributeType: S
         KeySchema:
-        - AttributeName: type
+        - AttributeName: propinst
           KeyType: HASH
         - AttributeName: id
           KeyType: RANGE
