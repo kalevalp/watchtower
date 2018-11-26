@@ -94,3 +94,5 @@ jspm_packages
 package-lock.json
 
 private.yml
+
+build

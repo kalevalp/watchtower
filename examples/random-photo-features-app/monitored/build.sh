@@ -14,5 +14,5 @@ echo "Building project modules"
 pushd get-and-store-random-photo/ && npm install && popd && \
   pushd feature-extraction/ && npm install && popd && \
   pushd process/ && npm install && popd && \
-  pushd log-ingestion-instance && npm install && popd
+  pushd log-ingestion-instance/ && mkdir build && cp ../property.js build/ && npm install && popd
 

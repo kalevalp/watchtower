@@ -17,20 +17,20 @@ const property = {
     events: {
         'IMAGE_FETCH': {
             quantifierMap: {
-                'image' :2, // The second param of the property is the 'image' quantified variable of the property.
+                'image': 1, // The second param of the property is the 'image' quantified variable of the property.
             },
             consts: {
-                1: ['https://source.unsplash.com/random'],  // The first param of the property is a const to be matched
+                0: ['https://source.unsplash.com/random'],  // The first param of the property is a const to be matched
             }
         },
         'DETECT_LABELS': {
             quantifierMap: {
-                1: 1,
+                'image': 0,
             }
         }
     },
     projections: [ // This property has a single projection, on the single quantified variable in the property.
-        [1],
+        [0],
     ],
     stateMachine: [
         {
