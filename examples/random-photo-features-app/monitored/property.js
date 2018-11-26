@@ -14,6 +14,9 @@ const property = {
     name: 'simpleprop',
     predicates: ['IMAGE_FETCH', 'DETECT_LABELS'],
     quantifiedVariables: ['image'],
+    projections: [['image']], // This property has a single projection, on the single quantified variable in the property.
+                              // Union over all projections should equal to quantifiedVariables.
+                              // Also, all projections should be ordered (matching quantifier order).
     events: {
         'IMAGE_FETCH': {
             quantifierMap: {
@@ -29,36 +32,32 @@ const property = {
             }
         }
     },
-    projections: [ // This property has a single projection, on the single quantified variable in the property.
-        [0],
-    ],
-    stateMachine: [
-        {
-            from: null,
-            to: 'fetched',
-            predicate: 'IMAGE_FETCH',
-            params: [
-                'const__https://source.unsplash.com/random', // Record fetches from unsplash random
-                'var__image', // Quantified over the fetched image
-            ]
+    // Determinism is enforced by well-formedness of the JSON object.
+    stateMachine: {
+        'IMAGE_FETCH' : {
+            'INITIAL' : {
+                to: 'fetched',
+                params: [
+                    'const__https://source.unsplash.com/random', // Record fetches from unsplash random
+                    'var__image', // Quantified over the fetched image
+                ]
+            },
         },
-        {
-            from: 'fetched',
-            to: 'SUCCESS', // Predefined terminal non-violating state.
-            predicate: 'DETECT_LABELS',
-            params: [
-                'var__image', // Same variable the property is quantified over
-            ],
+        'DETECT_LABELS' : {
+            'INITIAL' : { // Predefined initial state.
+                to: 'FAILURE', // Predefined terminal violating state.
+                params: [
+                    'var__image',
+                ],
+            },
+            'fetched' : {
+                to: 'SUCCESS', // Predefined terminal non-violating state.
+                params: [
+                    'var__image', // Same variable the property is quantified over
+                ],
+            },
         },
-        {
-            from: null,
-            to: 'FAILURE', // Predefined terminal violating state.
-            predicate: 'DETECT_LABELS',
-            params: [
-                'var__image',
-            ],
-        }
-    ]
+    }
 };
 
 module.exports = property;
