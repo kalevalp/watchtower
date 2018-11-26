@@ -11,5 +11,11 @@
     "Lambda"
   ],
   "author": "Kalev Alpernas <kalev.alp@gmail.com>",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "help": "^3.0.2"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.362.0"
+  }
 }

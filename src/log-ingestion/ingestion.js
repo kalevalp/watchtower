@@ -22,13 +22,13 @@ function createIngestionHandler (tableName, properties) {
                 const eventType = eventUpdate[2];
                 const eventParams = eventUpdate[3].split(',');
                 for (const prop of properties) {
-                    if (prop.predicates.events[eventType]) {
-                        const e = prop.predicates.events[eventType];
+                    if (prop.events[eventType]) {
+                        const e = prop.events[eventType];
 
                         let propinstKey = prop.name;
 
                         for (const qvar of prop.quantifiedVariables) {
-                            if (e.quantifierMap[qvar]) {
+                            if (e.quantifierMap[qvar] !== undefined) {
                                 propinstKey+=qvar;
                                 propinstKey+=eventParams[e.quantifierMap[qvar]];
                             }
