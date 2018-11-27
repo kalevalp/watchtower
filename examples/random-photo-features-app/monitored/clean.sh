@@ -15,4 +15,5 @@ pushd get-and-store-random-photo/ && rm -rf node_modules && popd && \
   pushd feature-extraction/ && rm -rf node_modules && popd && \
   pushd process/ && rm -rf node_modules && popd && \
   pushd log-ingestion-instance && rm -rf node_modules && rm build/property.js && rmdir build && popd
+  pushd monitor-instance && rm -rf node_modules && rm build/property.js && rmdir build && popd
 
