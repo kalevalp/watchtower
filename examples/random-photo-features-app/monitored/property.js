@@ -12,49 +12,61 @@
 
 const property = {
     name: 'simpleprop',
-    predicates: ['IMAGE_FETCH', 'DETECT_LABELS'],
+    // predicates: ['IMAGE_FETCH', 'DETECT_LABELS'],
     quantifiedVariables: ['image'],
+    // stateVariables: ['url'],
     projections: [['image']], // This property has a single projection, on the single quantified variable in the property.
                               // Union over all projections should equal to quantifiedVariables.
                               // Also, all projections should be ordered (matching quantifier order).
-    events: {
-        'IMAGE_FETCH': {
-            quantifierMap: {
-                'image': 1, // The second param of the property is the 'image' quantified variable of the property.
-            },
-            consts: {
-                0: ['https://source.unsplash.com/random'],  // The first param of the property is a const to be matched
-            }
-        },
-        'DETECT_LABELS': {
-            quantifierMap: {
-                'image': 0,
-            }
-        }
-    },
+    // events: {
+    //     'IMAGE_FETCH': {
+    //         quantifierMap: {
+    //             'image': 1, // The second param of the property is the 'image' quantified variable of the property.
+    //         },
+    //         stateVarMap: {
+    //             'url': 0, // The first param of the property is a const to be matched
+    //         },
+    //         // consts: {
+    //         //     0: ['https://source.unsplash.com/random'],
+    //         // },
+    //     },
+    //     'DETECT_LABELS': {
+    //         quantifierMap: {
+    //             'image': 0,
+    //         }
+    //     }
+    // },
     // Determinism is enforced by well-formedness of the JSON object.
     stateMachine: {
         'IMAGE_FETCH' : {
+            filter: (url, image) => url === 'https://source.unsplash.com/random', // Only record image fetches from unsplash
+            params: [
+                'url', // Record fetches from unsplash random
+                'image', // Quantified over the fetched image
+            ],
             'INITIAL' : {
-                to: 'fetched',
-                params: [
-                    'const__https://source.unsplash.com/random', // Record fetches from unsplash random
-                    'var__image', // Quantified over the fetched image
-                ]
+                'GUARDED_TRANSITION': {
+                    guard: (url, image) => url === 'https://source.unsplash.com/random',
+                    guardParams: ['url'],
+                    onGuardHolds: {
+                        to: 'fetched',
+                    },
+                    onGuardViolated: {
+                        to: 'SAME',
+                    },
+                },
             },
         },
         'DETECT_LABELS' : {
+            params: [
+                'image', // Same variable the property is quantified over
+                'IGNORE', // Second parameter of the DETECT_LABELS event is not relevant to this property
+            ],
             'INITIAL' : { // Predefined initial state.
                 to: 'FAILURE', // Predefined terminal violating state.
-                params: [
-                    'var__image',
-                ],
             },
             'fetched' : {
                 to: 'SUCCESS', // Predefined terminal non-violating state.
-                params: [
-                    'var__image', // Same variable the property is quantified over
-                ],
             },
         },
     }
