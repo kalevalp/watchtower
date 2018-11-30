@@ -1,5 +1,6 @@
 const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
+// const ses = new aws.SES();
 
 const constRE = /const__(.*$)/;
 const varRE = /var__([a-zA-Z0-9_]+)/;
@@ -92,6 +93,15 @@ module.exports.monitorFactory = (tableName, prop) => {
                             if (state === 'FAILURE') {
                                 // Somehow report to the user that the property had been violated.
                                 // At the moment - fail. TODO: use AWS SES to send an email to someone.
+                                // const params = {
+                                //     Destination: { ToAddresses: [ 'alpernask@vmware.com' ] },
+                                //     Message: {
+                                //         Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
+                                //         Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
+                                //     },
+                                //     Source: 'alpernask@vmware.com',
+                                // };
+                                // return ses.sendEmail(params).promise();
 
                                 // TODO: make a more readable print of the instance.
                                 return `Property ${prop.name} was violated for property instance ${instance}`;
