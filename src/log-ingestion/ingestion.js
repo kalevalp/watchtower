@@ -22,27 +22,36 @@ function createIngestionHandler (tableName, properties) {
                 const eventType = eventUpdate[2];
                 const eventParams = eventUpdate[3].split(',');
                 for (const prop of properties) {
-                    if (prop.events[eventType]) {
-                        const e = prop.events[eventType];
 
-                        let propinstKey = prop.name;
+                    const eventTransitions = prop.stateMachine[eventType];
 
-                        for (const qvar of prop.quantifiedVariables) {
-                            if (e.quantifierMap[qvar] !== undefined) {
-                                propinstKey+=qvar;
-                                propinstKey+=eventParams[e.quantifierMap[qvar]];
-                            }
-                        }
+                    if (eventTransitions &&
+                        (eventTransitions.filter ? eventTransitions.filter(...eventParams) : true)) {
 
                         const entry = {
-                            propinst: propinstKey, // Partition Key
                             id: logEvent.id.toString(), // Sort Key
                             type: eventType,
                             params: eventParams,
                             timestamp: logEvent.timestamp.toString(),
                             logGroup: logBatch.logGroup,
                             logStream: logBatch.logStream,
+                            quantified: {},
                         };
+
+                        const e = eventTransitions;
+
+                        let propinstKey = prop.name;
+
+                        for (const qvar of prop.quantifiedVariables) {
+                            const varIDX = e.params.indexOf(qvar);
+                            if (varIDX !== -1) {
+                                propinstKey+=qvar;
+                                propinstKey+=eventParams[varIDX];
+                            }
+                            entry.quantified[qvar] = eventParams[varIDX];
+                        }
+                        entry.propinst = propinstKey; // Partition Key
+
                         entries.push(entry);
                     }
                 }
@@ -56,8 +65,6 @@ function createIngestionHandler (tableName, properties) {
         for (let i = 0; i < entries.length; i += 25) {
             batchedEntries.push(entries.slice(i, i + 25));
         }
-
-        console.log(batchedEntries);
 
         const calls = [];
 
@@ -83,6 +90,12 @@ function createIngestionHandler (tableName, properties) {
                         }
                     }
                 };
+
+                for (const varname in item.quantified) {
+                    if (item.quantified.hasOwnProperty(varname)) {
+                        putRequest.PutRequest.Item[varname] = {S: item.quantified[varname]};
+                    }
+                }
                 params.RequestItems[tableName].push(putRequest);
             }
             calls.push(ddb.batchWriteItem(params).promise());
