@@ -16,44 +16,9 @@ function intersection(setA, setB) {
 
 const property = {
     name: 'emailtosubscribed',
-    // predicates: ['SUBSCRIBE', 'UNSUBSCRIBE', 'PUBLISH', 'SEND'],
     quantifiedVariables: ['message', 'address'], // Universally quantified - determines the instance of the property.
-    // stateVariables: ['list'], // Complex property state machines may have a state variables. In this case the property maintains two sets of mailing lists.
     projections: [['message', 'address'], ['message'], ['address']],
-    // events: {
-    //     'SUBSCRIBE': { // SUBSCRIBE(address, list)
-    //         quantifierMap: {
-    //             'address': 0, // The first parameter of SUBSCRIBE is the 'address' quantified variable.
-    //         },
-    //         stateVarMap: {
-    //             'list': 1, // The second parameter of SUBSCRIBE is the 'list' FSM state variable.
-    //         },
-    //     },
-    //     'UNSUBSCRIBE': { // UNSUBSCRIBE(address, list)
-    //         quantifierMap: {
-    //             'address': 0,
-    //         },
-    //         stateVarMap: {
-    //             'list': 1,
-    //         },
-    //     },
-    //     'PUBLISH': { // PUBLISH(message, list)
-    //         quantifierMap: {
-    //             'message': 0,
-    //         },
-    //         stateVarMap: {
-    //             'list': 1,
-    //         },
-    //     },
-    //     'SEND': { // SEND(message, address)
-    //         quantifierMap: {
-    //             'message': 0,
-    //             'address': 1,
-    //         },
-    //         stateVarMap: {},
-    //     },
-    // },
-    // Determinism is enforced by well-formedness of the JSON object.
+
     stateMachine: {
 
         subscribed: new Set(),
