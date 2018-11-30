@@ -21,8 +21,12 @@ const property = {
 
     stateMachine: {
 
-        subscribed: new Set(),
-        published : new Set(),
+        getNewCompoundState: () => (
+            {
+                subscribed: new Set(),
+                published : new Set(),
+            }
+        ),
 
         'SUBSCRIBE': { // SUBSCRIBE(address, list)
             params : [
@@ -31,7 +35,7 @@ const property = {
             ],
             'ANY' : {
                 to: 'SAME',
-                update: (address, list) => subscribed.add(list),
+                update: (curr, address, list) => curr.subscribed.add(list),
             }
         },
         'UNSUBSCRIBE': { // UNSUBSCRIBE(address, list)
@@ -41,7 +45,7 @@ const property = {
             ],
             'ANY' : {
                 to: 'SAME',
-                update: (address, list) => subscribed.add(list),
+                update: (curr, address, list) => curr.subscribed.add(list),
             }
         },
         'PUBLISH': { // PUBLISH(message, list)
@@ -51,7 +55,7 @@ const property = {
             ],
             'ANY' : {
                 to: 'SAME',
-                update: (message, list) => published.add(list),
+                update: (curr, message, list) => curr.published.add(list),
             }
 
         },
