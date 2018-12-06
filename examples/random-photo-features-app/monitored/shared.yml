@@ -20,3 +20,15 @@ logGroupNames:
   RandomImageFetchLogGroupName: '/aws/lambda/get-and-store-random-photo-dev-monitored-fetchAndStore'
 #  logStream:
 #    'Fn::ImportValue': '${self:custom.exports.FeatureExtractionLogGroupName}'
+
+
+invocationStream:
+  exportInvocationStreamName : ${self:custom.stage}InvocationStreamName
+  exportInvocationStreamArn : ${self:custom.stage}InvocationStreamArn
+  exportInvocationStreamWriterArn : ${self:custom.stage}InvocationStreamWriterArn
+  exportInvocationStreamReaderArn : ${self:custom.stage}InvocationStreamReaderArn
+
+
+eventsTable:
+  exportEventsTableName : ${self:custom.stage}EventsTableName
+  exportEventsTableArn : ${self:custom.stage}EventsTableArn

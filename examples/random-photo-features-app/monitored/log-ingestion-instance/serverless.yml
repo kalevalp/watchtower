@@ -25,6 +25,8 @@ functions:
     environment:
       EVENT_TABLE:
         Ref: EventsTable
+      STREAM_NAME:
+        Fn::ImportValue: ${self:custom.invocationStream.exportInvocationStreamName}
 
 
 resources:
@@ -96,3 +98,43 @@ resources:
                    - '/'
                    - - 'arn:aws:dynamodb:${self:provider.region}:${self:custom.private.account}:table'
                      - Ref: EventsTable
+    # Role for producers
+    InvocationStreamWriter:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:custom.stage}InvocationStreamWriter
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: sts:AssumeRole
+              Principal:
+                Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AdministratorAccess
+        Policies:
+          - PolicyName: WriteToStream
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                -  Effect: Allow
+                   Action:
+                     - 'kinesis:DescribeStream'
+                     - 'kinesis:PutRecord'
+                     - 'kinesis:PutRecords'
+                   Resource:
+                     Fn::ImportValue: ${self:custom.invocationStream.exportInvocationStreamArn}
+  Outputs:
+    EventsTableName:
+      Description: The Name of the Event Table
+      Value:
+        Ref: EventsTable
+      Export:
+        Name: ${self:custom.eventsTable.exportEventsTableName}
+    EventsTableArn:
+      Description: The ARN for the Event Table
+      Value:
+        Fn::GetAtt: [ EventsTable, Arn ]
+      Export:
+        Name: ${self:custom.eventsTable.exportEventsTableArn}
