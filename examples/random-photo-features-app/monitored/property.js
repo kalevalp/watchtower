@@ -25,7 +25,7 @@ const property = {
                         to: 'fetched',
                     },
                     onGuardViolated: {
-                        to: 'SAME',
+                        to: 'INITIAL',
                     },
                 },
             },
