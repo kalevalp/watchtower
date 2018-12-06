@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "kinesis-listener": "file:../../../../src/kinesis-listener",
     "log-scan-monitor": "file:../../../../src/log-scan-monitor"
   }
 }
