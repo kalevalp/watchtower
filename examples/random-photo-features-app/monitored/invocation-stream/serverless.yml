@@ -1,0 +1,102 @@
+service: random-features-stream
+
+custom: ${file(../shared.yml)}
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  deploymentBucket: ${self:custom.deploymentBucket}
+  stage: ${self:custom.stage}
+  profile: ${self:custom.profile}
+  region: ${self:custom.region}
+
+resources:
+  Resources:
+    # Invocation Stream
+    InvocationStream:
+      Type: 'AWS::Kinesis::Stream'
+      Properties:
+        Name: ${self:custom.stage}InvocationStream
+        ShardCount: 10
+
+#    # Role for producers
+#    InvocationStreamWriter:
+#      Type: AWS::IAM::Role
+#      Properties:
+#        Path: /
+#        RoleName: ${self:custom.stage}InvocationStreamWriter
+#        AssumeRolePolicyDocument:
+#          Version: '2012-10-17'
+#          Statement:
+#            - Effect: Allow
+#              Action: sts:AssumeRole
+#              Principal:
+#                Service: lambda.amazonaws.com
+#        ManagedPolicyArns:
+#          - arn:aws:iam::aws:policy/AdministratorAccess
+#        Policies:
+#          - PolicyName: WriteToStream
+#            PolicyDocument:
+#              Version: '2012-10-17'
+#              Statement:
+#                -  Effect: Allow
+#                   Action:
+#                     - 'kinesis:DescribeStream'
+#                     - 'kinesis:PutRecord'
+#                     - 'kinesis:PutRecords'
+#                   Resource:
+#                     Fn::GetAtt: [ InvocationStream, Arn ]
+#    # Role for consumers
+#    InvocationStreamReader:
+#      Type: AWS::IAM::Role
+#      Properties:
+#        Path: /
+#        RoleName: ${self:custom.stage}InvocationStreamReader
+#        AssumeRolePolicyDocument:
+#          Version: '2012-10-17'
+#          Statement:
+#            - Effect: Allow
+#              Action: sts:AssumeRole
+#              Principal:
+#                Service: lambda.amazonaws.com
+#        ManagedPolicyArns:
+#          - arn:aws:iam::aws:policy/AdministratorAccess
+#        Policies:
+#          - PolicyName: ReadFromStream
+#            PolicyDocument:
+#              Version: '2012-10-17'
+#              Statement:
+#                -  Effect: Allow
+#                   Action:
+#                     - 'kinesis:DescribeStream'
+#                     - 'kinesis:GetRecords'
+#                     - 'kinesis:GetShardIterator'
+#                     - 'kinesis:ListStreams'
+#                   Resource:
+#                     Fn::GetAtt: [ InvocationStream, Arn ]
+
+  Outputs:
+    InvocationStreamName:
+      Description: The Name of the Invocation Stream
+      Value:
+        Ref: InvocationStream
+      Export:
+        Name: ${self:custom.invocationStream.exportInvocationStreamName}
+    InvocationStreamArn:
+      Description: The ARN for the Invocation Stream
+      Value:
+        Fn::GetAtt: [ InvocationStream, Arn ]
+      Export:
+        Name: ${self:custom.invocationStream.exportInvocationStreamArn}
+#    InvocationStreamWriterArn:
+#      Description: The ARN for the defined Role that can write events to the InvocationStream
+#      Value:
+#        Fn::GetAtt: [ InvocationStreamWriter, Arn ]
+#      Export:
+#        Name: ${self:custom.invocationStream.exportInvocationStreamWriterArn}
+#    InvocationStreamReaderArn:
+#      Description: The ARN for the defined Role that can read events from the InvocationStream
+#      Value:
+#        Fn::GetAtt: [ InvocationStreamReader, Arn ]
+#      Export:
+#        Name: ${self:custom.invocationStream.exportInvocationStreamReaderArn}
