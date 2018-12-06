@@ -13,7 +13,8 @@
   "author": "Kalev Alpernas <kalev.alp@gmail.com>",
   "license": "ISC",
   "dependencies": {
-    "help": "^3.0.2"
+    "help": "^3.0.2",
+    "property-utils": "file:../property-utils"
   },
   "devDependencies": {
     "aws-sdk": "^2.362.0"

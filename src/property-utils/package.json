@@ -1,0 +1,14 @@
+{
+  "name": "property-utils",
+  "version": "1.0.0",
+  "description": "",
+  "main": "prop-utils.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "graphviz": "0.0.8"
+  }
+}

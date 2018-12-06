@@ -2,13 +2,26 @@
 
 const zlib = require('zlib');
 const aws = require('aws-sdk');
+const proputils = require('property-utils');
+
 
 const ddb = new aws.DynamoDB();
+const kinesis = new aws.Kinesis();
+
 
 const eventUpdateRE = /\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
 function createIngestionHandler (tableName, properties) {
+
+    const propTerm = {};
+
+    for (const property of properties) {
+        propTerm[property.name] = proputils.getTerminatingTransitions(property);
+    }
+
     return async function (event) {
+        const monitorInstancesToTrigger = new Set();
+
         const payload = new Buffer(event.awslogs.data, 'base64');
 
         let logBatch = JSON.parse(zlib.gunzipSync(payload).toString('ascii'));
@@ -41,7 +54,6 @@ function createIngestionHandler (tableName, properties) {
                         const e = eventTransitions;
 
                         let propinstKey = prop.name;
-
                         for (const qvar of prop.quantifiedVariables) {
                             const varIDX = e.params.indexOf(qvar);
                             if (varIDX !== -1) {
@@ -53,6 +65,10 @@ function createIngestionHandler (tableName, properties) {
                         entry.propinst = propinstKey; // Partition Key
 
                         entries.push(entry);
+
+                        if (propTerm[prop.name].has(eventType)) {
+                            monitorInstancesToTrigger.add(JSON.stringify(entry.quantified));
+                        }
                     }
                 }
             } else {
@@ -101,7 +117,30 @@ function createIngestionHandler (tableName, properties) {
             calls.push(ddb.batchWriteItem(params).promise());
         }
 
-        return Promise.all(calls);
+        const params = {
+            Records: [],
+            StreamName: process.env.STREAM_NAME,
+        };
+
+        if (monitorInstancesToTrigger.size > 0) {
+
+            for (const instance of monitorInstancesToTrigger) {
+                params.Records.push({
+                    Data: instance,
+                    PartitionKey: JSON.stringify(instance).substring(0, 256),
+                });
+            }
+
+            if (params.Records.length > 500)
+                throw "FATAL ERROR: Too many invocation requests!";
+        }
+
+        console.log("*********");
+        console.log(params);
+        console.log(monitorInstancesToTrigger);
+
+        return Promise.all(calls)
+            .then(() => params.Records.length > 0 ? kinesis.putRecords(params).promise() : undefined);
 
     };
 }
