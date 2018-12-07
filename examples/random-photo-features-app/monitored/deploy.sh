@@ -14,5 +14,7 @@ echo "Deploying project modules"
 pushd get-and-store-random-photo/ && sls deploy -v && popd && \
   pushd feature-extraction/ && sls deploy -v && popd && \
   pushd process/ && sls deploy -v && popd && \
-  pushd log-ingestion-instance/ && sls deploy -v && popd
+  pushd invocation-stream && sls deploy -v && popd && \
+  pushd log-ingestion-instance/ && sls deploy -v && popd && \
+  pushd monitor-instance/ && sls deploy -v && popd
 

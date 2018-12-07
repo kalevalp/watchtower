@@ -3,39 +3,54 @@ const ddb = new aws.DynamoDB();
 // const ses = new aws.SES();
 
 function getEvents (collectedEvents, params) {
-    return ddb.query(params).promise()
-        .then(data => {
-            if (data.LastEvaluatedKey) { // There are additional items in DynamoDB
-                params.ExclusiveStartKey = data.LastEvaluatedKey;
-                return getEvents(collectedEvents.concat(data.Items), params);
-            } else {
-                return collectedEvents.concat(data.Items)
-            }
-        })
+    console.log(`*** Call to getEvents: ${collectedEvents}, ${JSON.stringify(params)}`);
+    console.log(params);
+    return Promise.resolve(() => console.log("Calling ddb"))
+        .then(() => ddb.query(params).promise()
+            .then(data => {
+                if (data.LastEvaluatedKey) { // There are additional items in DynamoDB
+                    params.ExclusiveStartKey = data.LastEvaluatedKey;
+                    return getEvents(collectedEvents.concat(data.Items), params);
+                } else {
+                    return collectedEvents.concat(data.Items)
+                }
+        }))
 }
 
 module.exports.monitorFactory = (tableName, prop) => {
     return function(instance) {
-
-        console.log(`Running checker for property instane ${JSON.stringify(instance)}`);
+        console.log(`*** Running checker for property instance ${JSON.stringify(instance)}`);
 
         const ddbCalls = [];
 
+        console.log(`*** Property: ${JSON.stringify(prop)}`);
+
         for (const proj of prop.projections) {
+
+            console.log(`*** Projection: ${JSON.stringify(proj)}`);
+
             let propinstKey = prop.name;
 
             for (const qvar of proj) {
                 if (! instance[qvar]) {
+                    console.log(`ERROR: Quantified variable ${qvar} not fount in ${JSON.stringify(instance)}`);
+
                     throw `Instance is missing an assignment to quantified variable ${qvar}.`;
                 }
 
                 propinstKey+=qvar;
                 propinstKey+=instance[qvar];
             }
+
+            console.log(`*** Property Instance: ${propinstKey}`);
+
             const queryRequest = {
                 TableName: tableName,
-                KeyConditionExpression: `propinst = :${propinstKey}`,
+                KeyConditionExpression: `propinst = :keyval`,
+                ExpressionAttributeValues: {":keyval": {"S": `${propinstKey}`}},
             };
+
+            console.log(`*** Query: ${JSON.stringify(queryRequest)}`);
 
             ddbCalls.push(getEvents([], queryRequest));
         }
@@ -46,15 +61,20 @@ module.exports.monitorFactory = (tableName, prop) => {
             .then(results => results.sort((a, b) => a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp)) // Sort by timestamp, with id being a tie-breaker
             .then(results => {
                 console.log("In promise!");
+                console.log(results);
                 let state = {
                     curr: 'INITIAL',
                     compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
                 };
 
                 for (const e of results) {
-                    const eventType = e.type;
-                    const eventParams = e.params;
+                    const eventType = e.type.S;
+                    const eventParams = e.params.SS;
 
+                    console.log(`*** Processing Event: Type - ${eventType}`);
+                    console.log(`*** Processing Event: Parameters - ${eventParams}`);
+
+                    // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
                     const transition =
                         prop.stateMachine[eventType]['ANY'] ?
                             prop.stateMachine[eventType]['ANY'] :
@@ -100,6 +120,8 @@ module.exports.monitorFactory = (tableName, prop) => {
                     }
                 }
 
+                console.log(state.curr);
+
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
                     // Somehow report to the user that the property had been violated.
@@ -115,15 +137,15 @@ module.exports.monitorFactory = (tableName, prop) => {
                     // return ses.sendEmail(params).promise();
 
                     // TODO: make a more readable print of the instance.
-                    console.log(`Property ${prop.name} was violated for property instance ${instance}`);
+                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}`);
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
-                    console.log(`Property ${prop.name} holds for property instance ${instance}`);
+                    console.log(`Property ${prop.name} holds for property instance ${JSON.stringify(instance)}`);
                 } else {
                     // No violation found, but it might still be violated depending on future events.
 
-                    console.log(`Property ${prop.name} was not violated (but might be violated by future events) for property instance ${instance}`);
+                    console.log(`Property ${prop.name} was not violated (but might be violated by future events) for property instance ${JSON.stringify(instance)}`);
                 }
 
             })
