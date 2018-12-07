@@ -11,8 +11,8 @@ fi
 
 echo "Removing project modules"
 
-pushd log-ingestion-instance/ && sls remove -v && popd && \
-  pushd monitor-instance/ && sls remove -v && popd && \
+pushd monitor-instance/ && sls remove -v && popd && \
+  pushd log-ingestion-instance/ && sls remove -v && popd && \
   pushd invocation-stream && sls remove -v && popd && \
   pushd process/ && sls remove -v && popd && \
   pushd get-and-store-random-photo/ && sls remove -v && popd && \
