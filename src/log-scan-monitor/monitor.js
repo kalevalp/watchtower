@@ -3,31 +3,22 @@ const ddb = new aws.DynamoDB();
 // const ses = new aws.SES();
 
 function getEvents (collectedEvents, params) {
-    console.log(`*** Call to getEvents: ${collectedEvents}, ${JSON.stringify(params)}`);
-    console.log(params);
-    return Promise.resolve(() => console.log("Calling ddb"))
-        .then(() => ddb.query(params).promise()
-            .then(data => {
-                if (data.LastEvaluatedKey) { // There are additional items in DynamoDB
-                    params.ExclusiveStartKey = data.LastEvaluatedKey;
-                    return getEvents(collectedEvents.concat(data.Items), params);
-                } else {
-                    return collectedEvents.concat(data.Items)
-                }
-        }))
+    return ddb.query(params).promise()
+        .then(data => {
+            if (data.LastEvaluatedKey) { // There are additional items in DynamoDB
+                params.ExclusiveStartKey = data.LastEvaluatedKey;
+                return getEvents(collectedEvents.concat(data.Items), params);
+            } else {
+                return collectedEvents.concat(data.Items)
+            }
+        })
 }
 
 module.exports.monitorFactory = (tableName, prop) => {
     return function(instance) {
-        console.log(`*** Running checker for property instance ${JSON.stringify(instance)}`);
-
         const ddbCalls = [];
 
-        console.log(`*** Property: ${JSON.stringify(prop)}`);
-
         for (const proj of prop.projections) {
-
-            console.log(`*** Projection: ${JSON.stringify(proj)}`);
 
             let propinstKey = prop.name;
 
@@ -42,26 +33,19 @@ module.exports.monitorFactory = (tableName, prop) => {
                 propinstKey+=instance[qvar];
             }
 
-            console.log(`*** Property Instance: ${propinstKey}`);
-
             const queryRequest = {
                 TableName: tableName,
                 KeyConditionExpression: `propinst = :keyval`,
                 ExpressionAttributeValues: {":keyval": {"S": `${propinstKey}`}},
             };
 
-            console.log(`*** Query: ${JSON.stringify(queryRequest)}`);
-
             ddbCalls.push(getEvents([], queryRequest));
         }
 
         return Promise.all(ddbCalls)
-            .then(results => {console.log('All reads successful!'); return results;})
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
             .then(results => results.sort((a, b) => a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp)) // Sort by timestamp, with id being a tie-breaker
             .then(results => {
-                console.log("In promise!");
-                console.log(results);
                 let state = {
                     curr: 'INITIAL',
                     compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
@@ -69,16 +53,13 @@ module.exports.monitorFactory = (tableName, prop) => {
 
                 for (const e of results) {
                     const eventType = e.type.S;
-                    const eventParams = e.params.SS;
-
-                    console.log(`*** Processing Event: Type - ${eventType}`);
-                    console.log(`*** Processing Event: Parameters - ${eventParams}`);
+                    const eventParams = e.params.L.map(param => param.S);
 
                     // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
                     const transition =
                         prop.stateMachine[eventType]['ANY'] ?
                             prop.stateMachine[eventType]['ANY'] :
-                            prop.stateMachine[eventType][state];
+                            prop.stateMachine[eventType][state.curr];
 
                     if (transition) {
                         // Sanity check that the quantified variable assignment matches the current property instance
@@ -114,13 +95,10 @@ module.exports.monitorFactory = (tableName, prop) => {
                         if (update)
                             update(state.compound, ...eventParams);
 
-                        if (toState !== 'SAME')
-                            state.curr = toState;
+                        state.curr = toState;
 
                     }
                 }
-
-                console.log(state.curr);
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
