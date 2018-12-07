@@ -99,7 +99,7 @@ function createIngestionHandler (tableName, properties) {
                             "propinst": {S: item.propinst},
                             "id": {S: item.id},
                             "type": {S: item.type},
-                            "params": {SS: item.params},
+                            "params": {L: item.params.map((param) => ({S: param}))},
                             "timestamp": {N: item.timestamp},
                             "logGroup": {S: item.logGroup},
                             "logStream": {S: item.logStream},
