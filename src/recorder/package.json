@@ -1,5 +1,5 @@
 {
-  "name": "recorder",
+  "name": "watchtower-recorder",
   "version": "1.0.0",
   "description": "Module in charge of recording external function interactions.",
   "main": "recorder.js",
@@ -10,7 +10,6 @@
     "AWS",
     "Lambda"
   ],
-  "author": "Kalev Alpernas <kalev.alp@gmail.com>",
   "license": "ISC",
   "dependencies": {
     "vm2": "^3.6.4"
