@@ -3,9 +3,9 @@
 const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
 
-function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock) {
+function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally) {
 
-    const originalLambdaPath    = `/var/task/${originalLambdaFile}`;
+    const originalLambdaPath    = `${runLocally?'':'/var/task/'}${originalLambdaFile}`;
     const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
     const originalLambdaScript  = new VMScript(originalLambdaCode);
 
