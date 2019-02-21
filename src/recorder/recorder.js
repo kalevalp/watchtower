@@ -15,7 +15,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             process: process,
         },
         require: {
-            // context: 'sandbox',
+            context: 'sandbox',
             external: true,
             builtin: ['*'],
             // root: "./",
