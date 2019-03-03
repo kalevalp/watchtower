@@ -1,5 +1,5 @@
 {
-  "name": "log-scan-monitor",
+  "name": "watchtower-monitor",
   "version": "1.0.0",
   "description": "",
   "main": "monitor.js",
