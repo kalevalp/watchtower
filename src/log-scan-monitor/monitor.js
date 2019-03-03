@@ -14,7 +14,20 @@ function getEvents (collectedEvents, params) {
         })
 }
 
-module.exports.monitorFactory = (tableName, prop) => {
+function kinesisListenerFactory (handleMonitorInstance) {
+    return (event) => {
+        const monitorInstances = [];
+        for (const record of event.Records) {
+            let inst = JSON.parse(Buffer.from(record.kinesis.data,'base64').toString());
+
+            monitorInstances.push(handleMonitorInstance(inst));
+        }
+
+        return Promise.all(monitorInstances)
+    }
+}
+
+function monitorFactory(tableName, prop) {
     return function(instance) {
         const ddbCalls = [];
 
@@ -130,3 +143,7 @@ module.exports.monitorFactory = (tableName, prop) => {
             .catch((err) => console.log(err));
     }
 };
+
+module.exports.kinesisListenerFactory = kinesisListenerFactory;
+module.exports.monitorFactory = monitorFactory;
+
