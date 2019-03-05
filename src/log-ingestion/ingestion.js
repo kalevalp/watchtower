@@ -123,12 +123,16 @@ function createIngestionHandler (tableName, properties) {
                         putRequest.PutRequest.Item[varname] = {S: item.quantified[varname]};
                     }
                 }
+                if (debug) {
+                    console.log("** DDB call:");
+                    console.log(JSON.stringify(putrequest));
+                }
+
                 params.RequestItems[tableName].push(putRequest);
             }
             
             if (debug) {
-                console.log("** DDB call:");
-                console.log(params)               
+                console.log(JSON.stringify(params));
             }
 
             calls.push(ddb.batchWriteItem(params).promise());
