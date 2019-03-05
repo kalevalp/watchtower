@@ -70,8 +70,8 @@ function createIngestionHandler (tableName, properties) {
                             if (varIDX !== -1) {
                                 propinstKey+=qvar;
                                 propinstKey+=eventParams[varIDX];
+                                entry.quantified[qvar] = eventParams[varIDX];                               
                             }
-                            entry.quantified[qvar] = eventParams[varIDX];
                         }
                         entry.propinst = propinstKey; // Partition Key
 
