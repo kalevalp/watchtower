@@ -2,7 +2,7 @@
 
 const zlib = require('zlib');
 const aws = require('aws-sdk');
-const proputils = require('property-utils');
+const proputils = require('watchtower-property-utils');
 
 
 const ddb = new aws.DynamoDB();
