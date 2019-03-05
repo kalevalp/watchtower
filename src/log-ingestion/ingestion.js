@@ -125,7 +125,7 @@ function createIngestionHandler (tableName, properties) {
                 }
                 if (debug) {
                     console.log("** DDB call:");
-                    console.log(JSON.stringify(putrequest));
+                    console.log(JSON.stringify(putRequest));
                 }
 
                 params.RequestItems[tableName].push(putRequest);
