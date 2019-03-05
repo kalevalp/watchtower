@@ -8,6 +8,7 @@ const proputils = require('watchtower-property-utils');
 const ddb = new aws.DynamoDB();
 const kinesis = new aws.Kinesis();
 
+const debug = process.env.DEBUG_WATCHTOWER
 
 const eventUpdateRE = /\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
@@ -20,12 +21,21 @@ function createIngestionHandler (tableName, properties) {
     }
 
     return async function (event) {
+        
+        if (debug) {
+            console.log(JSON.stringify(event));
+        }
+        
         const monitorInstancesToTrigger = new Set();
 
         const payload = new Buffer(event.awslogs.data, 'base64');
 
         let logBatch = JSON.parse(zlib.gunzipSync(payload).toString('ascii'));
         const logEvents = logBatch.logEvents;
+
+        if (debug) {
+            console.log(logEvents);
+        }
 
         const entries = [];
 
