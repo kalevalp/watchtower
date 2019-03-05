@@ -8,7 +8,8 @@ const proputils = require('watchtower-property-utils');
 const ddb = new aws.DynamoDB();
 const kinesis = new aws.Kinesis();
 
-const debug = process.env.DEBUG_WATCHTOWER
+const debug      = process.env.DEBUG_WATCHTOWER;
+const streamName = process.env.WATCHTOWER_INVOCATION_STREAM;
 
 const eventUpdateRE = /\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
@@ -124,12 +125,18 @@ function createIngestionHandler (tableName, properties) {
                 }
                 params.RequestItems[tableName].push(putRequest);
             }
+            
+            if (debug) {
+                console.log("** DDB call:");
+                console.log(params)               
+            }
+
             calls.push(ddb.batchWriteItem(params).promise());
         }
 
         const params = {
             Records: [],
-            StreamName: process.env.STREAM_NAME,
+            StreamName: streamName,
         };
 
         if (monitorInstancesToTrigger.size > 0) {
@@ -145,10 +152,11 @@ function createIngestionHandler (tableName, properties) {
                 throw "FATAL ERROR: Too many invocation requests!";
         }
 
-        console.log("*********");
-        console.log(params);
-        console.log(monitorInstancesToTrigger);
-
+        if (debug) {           
+            console.log("** Kinesis call:");
+            console.log(params);
+            console.log(monitorInstancesToTrigger);
+        }
         return Promise.all(calls)
             .then(() => params.Records.length > 0 ? kinesis.putRecords(params).promise() : undefined);
 

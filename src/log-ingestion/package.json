@@ -1,6 +1,6 @@
 {
   "name": "watchtower-log-ingestion",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Serverless function that receives an incoming log stream, and uses it to monitor a security property.",
   "main": "ingestion.js",
   "scripts": {
