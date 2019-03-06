@@ -4,5 +4,9 @@
 		{
 			"path": "."
 		}
-	]
+	],
+    "settings": {
+        "TEXroot": "paper/watchtower-main.tex"
+    }
+
 }
