@@ -57,16 +57,17 @@
 \begin{document}
 
 %% Title information
-\title[Short Title]{Full Title}         %% [Short Title] is optional;
-                                        %% when present, will be used in
-                                        %% header instead of Full Title.
-\titlenote{with title note}             %% \titlenote is optional;
-                                        %% can be repeated if necessary;
-                                        %% contents suppressed with 'anonymous'
-\subtitle{Subtitle}                     %% \subtitle is optional
-\subtitlenote{with subtitle note}       %% \subtitlenote is optional;
-                                        %% can be repeated if necessary;
-                                        %% contents suppressed with 'anonymous'
+\title{Cloud-Scale Runtime Monitoring of Cloud-Native Applications}         %% [Short Title] is optional;
+% \title[Short Title]{Full Title}         %% [Short Title] is optional;
+%                                         %% when present, will be used in
+%                                         %% header instead of Full Title.
+% \titlenote{with title note}             %% \titlenote is optional;
+%                                         %% can be repeated if necessary;
+%                                         %% contents suppressed with 'anonymous'
+% \subtitle{Subtitle}                     %% \subtitle is optional
+% \subtitlenote{with subtitle note}       %% \subtitlenote is optional;
+%                                         %% can be repeated if necessary;
+%                                         %% contents suppressed with 'anonymous'
 
 
 %% Author information
@@ -125,13 +126,7 @@
 \email{first2.last2@inst2b.org}         %% \email is recommended
 
 
-%% Abstract
-%% Note: \begin{abstract}...\end{abstract} environment must come
-%% before \maketitle command
-\begin{abstract}
-Text of abstract \ldots.
-\end{abstract}
-
+\input{abstract}
 
 %% 2012 ACM Computing Classification System (CSS) concepts
 %% Generate at 'http://dl.acm.org/ccs/ccs.cfm'.
@@ -166,11 +161,7 @@ Text of abstract \ldots.
 %% environment and commands, and keywords command.
 \maketitle
 
-
-\section{Introduction}
-
-Text of paper \ldots
-
+\input{intro}
 
 %% Acknowledgments
 \begin{acks}                            %% acks environment is optional
