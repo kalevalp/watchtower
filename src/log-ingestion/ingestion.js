@@ -11,7 +11,7 @@ const kinesis = new aws.Kinesis();
 const debug      = process.env.DEBUG_WATCHTOWER;
 const streamName = process.env.WATCHTOWER_INVOCATION_STREAM;
 
-const eventUpdateRE = /\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
+const eventUpdateRE = /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
 function createIngestionHandler (tableName, properties) {
 
@@ -43,8 +43,9 @@ function createIngestionHandler (tableName, properties) {
         for (const logEvent of logEvents) {
             const eventUpdate = logEvent.message.match(eventUpdateRE);
             if (eventUpdate) {
-                const eventType = eventUpdate[2];
-                const eventParams = eventUpdate[3].split(',');
+		const invocationUuid = eventUpdate[1];
+                const eventType = eventUpdate[3];
+                const eventParams = eventUpdate[4].split(',');
                 for (const prop of properties) {
 
                     const eventTransitions = prop.stateMachine[eventType];
@@ -60,6 +61,7 @@ function createIngestionHandler (tableName, properties) {
                             logGroup: logBatch.logGroup,
                             logStream: logBatch.logStream,
                             quantified: {},
+			    invocation: invocationUuid,
                         };
 
                         const e = eventTransitions;
@@ -114,6 +116,7 @@ function createIngestionHandler (tableName, properties) {
                             "timestamp": {N: item.timestamp},
                             "logGroup": {S: item.logGroup},
                             "logStream": {S: item.logStream},
+			    "invocation": {S: item.invocation},
                         }
                     }
                 };
