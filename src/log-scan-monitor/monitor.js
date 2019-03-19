@@ -113,7 +113,7 @@ function monitorFactory(tableName, prop) {
 
                         state.curr = toState;
 
-			if (state.curr === 'FAILURE')
+			if (toState === 'FAILURE')
 			    failingInvocation = eventInvocationUuid;
 			
                     }
