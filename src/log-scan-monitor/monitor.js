@@ -64,9 +64,12 @@ function monitorFactory(tableName, prop) {
                     compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
                 };
 
+		let failingInvocation;
+
                 for (const e of results) {
                     const eventType = e.type.S;
                     const eventParams = e.params.L.map(param => param.S);
+		    const eventInvocationUuid = e.invocation.S;
 
                     // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
                     const transition =
@@ -110,6 +113,9 @@ function monitorFactory(tableName, prop) {
 
                         state.curr = toState;
 
+			if (state.curr === 'FAILURE')
+			    failingInvocation = eventInvocationUuid;
+			
                     }
                 }
 
@@ -128,7 +134,7 @@ function monitorFactory(tableName, prop) {
                     // return ses.sendEmail(params).promise();
 
                     // TODO: make a more readable print of the instance.
-                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}`);
+                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.`);
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
