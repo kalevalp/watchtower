@@ -9,6 +9,7 @@ const ddb = new aws.DynamoDB();
 const kinesis = new aws.Kinesis();
 
 const debug      = process.env.DEBUG_WATCHTOWER;
+const profile    = process.env.PROFILE_WATCHTOWER;
 const streamName = process.env.WATCHTOWER_INVOCATION_STREAM;
 
 const eventUpdateRE = /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
@@ -38,6 +39,12 @@ function createIngestionHandler (tableName, properties) {
             console.log(logEvents);
         }
 
+	if (profile) {
+	    for (const logEvent of logEvents) {
+		console.log(logEvent);
+	    }
+	}
+	
         const entries = [];
 
         for (const logEvent of logEvents) {
