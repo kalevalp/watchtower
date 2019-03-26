@@ -2,6 +2,8 @@ const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
 // const ses = new aws.SES();
 
+const profile = process.env.PROFILE_WATCHTOWER;
+
 function getEvents (collectedEvents, params) {
     return ddb.query(params).promise()
         .then(data => {
@@ -20,6 +22,10 @@ function kinesisListenerFactory (handleMonitorInstance) {
         for (const record of event.Records) {
             let inst = JSON.parse(Buffer.from(record.kinesis.data,'base64').toString());
 
+	    if (profile) {
+		console.log(inst);
+	    }
+	    
             monitorInstances.push(handleMonitorInstance(inst));
         }
 
