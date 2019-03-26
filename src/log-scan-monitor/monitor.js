@@ -23,6 +23,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
             let inst = JSON.parse(Buffer.from(record.kinesis.data,'base64').toString());
 
 	    if (profile) {
+		console.log(`@@@ WATCHTOWER_PROF-${inst}-${record.kinesis.approximateArrivalTimestamp} @@@`);
 		console.log(inst);
 	    }
 	    
