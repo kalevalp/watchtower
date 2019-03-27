@@ -22,12 +22,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
         for (const record of event.Records) {
             let inst = JSON.parse(Buffer.from(record.kinesis.data,'base64').toString());
 
-	    if (profile) {
-		console.log(`@@@ WATCHTOWER_PROF-${inst}-${record.kinesis.approximateArrivalTimestamp} @@@`);
-		console.log(inst);
-	    }
-	    
-            monitorInstances.push(handleMonitorInstance(inst));
+            monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp));
         }
 
         return Promise.all(monitorInstances)
@@ -35,7 +30,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
 }
 
 function monitorFactory(tableName, prop) {
-    return function(instance) {
+    return function(instance, arrivalTimestamp) {
         const ddbCalls = [];
 
         for (const proj of prop.projections) {
@@ -140,8 +135,14 @@ function monitorFactory(tableName, prop) {
                     // };
                     // return ses.sendEmail(params).promise();
 
+		    let arrivalTimeText = '';
+
+		    if (profile) {
+			arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
+		    }
+		    
                     // TODO: make a more readable print of the instance.
-                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.`);
+                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
