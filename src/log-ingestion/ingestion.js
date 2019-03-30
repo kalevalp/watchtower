@@ -119,7 +119,6 @@ function createIngestionHandler (tableName, properties) {
                             "propinst": {S: item.propinst},
                             "id": {S: item.id},
                             "type": {S: item.type},
-                            "params": {L: item.params.map((param) => ({S: param}))},
                             "timestamp": {N: item.timestamp},
                             "logGroup": {S: item.logGroup},
                             "logStream": {S: item.logStream},
@@ -127,7 +126,10 @@ function createIngestionHandler (tableName, properties) {
                         }
                     }
                 };
-
+                if (item.params.some(x => x !== '')) {
+                    putRequest.PutRequest.Item.params = {L: item.params.filter(x => x!=='').map((param) => ({S: param}))};
+                }
+                
                 for (const varname in item.quantified) {
                     if (item.quantified.hasOwnProperty(varname)) {
                         putRequest.PutRequest.Item[varname] = {S: item.quantified[varname]};
