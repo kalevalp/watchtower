@@ -1,0 +1,169 @@
+service: wt-no-params
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  region: eu-west-2
+  stage: test
+
+functions:
+  hello:
+    handler: handler-wrapper.hello
+    events:
+      - http:
+          path: microbmark
+          method: get
+
+
+  ########################################
+  ## Watchtower Functions
+  ##
+  ##   Log Ingerstion
+  watchtower-ingestion: 
+    handler: watchtower-log-ingestion.handler
+    events:
+    - cloudwatchLog:
+        logGroup: /aws/lambda/wt-no-params-${self:provider.stage}-hello
+        filter: '"#####EVENTUPDATE"'
+    role:
+      'Fn::GetAtt': [ EventWriterRole, Arn ]
+    environment:
+      WATCHTOWER_EVENT_TABLE:
+        Ref: EventsTable
+      WATCHTOWER_INVOCATION_STREAM:
+        Ref: InvocationStream
+      DEBUG_WATCHTOWER: 1
+
+  watchtower-monitor:
+    handler: watchtower-monitor.handler
+    events:
+    - stream:
+        arn:
+          'Fn::GetAtt': [ InvocationStream, Arn ]
+        type: kinesis
+        enabled: true
+        startingPosition: TRIM_HORIZON
+    environment:
+      WATCHTOWER_EVENT_TABLE:
+        Ref: EventsTable
+      WATCHTOWER_INVOCATION_STREAM:
+        Ref: InvocationStream
+      DEBUG_WATCHTOWER: 1
+    role:
+      'Fn::GetAtt': [ EventReaderRole, Arn ]     
+  ##
+  ## END of Watchtower Functions
+  ########################################
+
+
+resources:
+  Resources:
+    ########################################
+    ## Watchtower Resources
+    ##
+    ##   Invocation Kinesis Stream
+    InvocationStream:
+      Type: 'AWS::Kinesis::Stream'
+      Properties:
+        Name: Watchtower${self:provider.stage}InvocationStream
+        ShardCount: 10
+    ##
+    ##   Events DynamoDB Table 
+    EventsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: propinst
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+        KeySchema:
+        - AttributeName: propinst
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST 
+        TableName: Watchtower-${self:provider.stage}-MonitoredEvents
+    ##
+    ##   Event-Writer IAM Role
+    EventWriterRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:provider.stage}EventWriterRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        Policies:
+          - PolicyName: BatchWriteToEventTable
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              -  Effect: Allow
+                 Action:
+                 - 'dynamodb:BatchWriteItem'
+                 Resource:
+                   Fn::GetAtt: [EventsTable, Arn]
+    ##
+    ## Event-Reader IAM Role
+    EventReaderRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:provider.stage}EventReaderRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        Policies:
+          - PolicyName: QueryEventTable
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              -  Effect: Allow
+                 Action:
+                 - 'dynamodb:Query'
+                 Resource:
+                   Fn::GetAtt: [EventsTable, Arn]
+    ## 
+    ## Invocation Kinesis Stream Writer Role
+    InvocationStreamWriter:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:provider.stage}InvocationStreamWriter
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: sts:AssumeRole
+              Principal:
+                Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AdministratorAccess
+        Policies:
+          - PolicyName: WriteToStream
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                -  Effect: Allow
+                   Action:
+                     - 'kinesis:DescribeStream'
+                     - 'kinesis:PutRecord'
+                     - 'kinesis:PutRecords'
+                   Resource:
+                     Fn::GetAtt: [InvocationStream, Arn]
+    ##
+    ## END of Watchtower Resources
+    ########################################
