@@ -55,7 +55,7 @@ function monitorFactory(tableName, prop) {
             };
 
             ddbCalls.push(getEvents([], queryRequest));
-        }
+        }        
 
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
@@ -70,7 +70,7 @@ function monitorFactory(tableName, prop) {
 
                 for (const e of results) {
                     const eventType = e.type.S;
-                    const eventParams = e.params.L.map(param => param.S);
+                    const eventParams = e.params ? e.params.L.map(param => param.S) : [];
 		    const eventInvocationUuid = e.invocation.S;
 
                     // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
