@@ -86,9 +86,30 @@ function createIngestionHandler (tableName, properties) {
 
                         entries.push(entry);
 
-                        if (propTerm[prop.name].has(eventType)) {
+                        if (propTerm[prop.name].has(eventType)) { // Terminating transition
+			    // Record that a new instance check has been initiated
+			    //   This is done to ensure that there are no false negatives (missed violations) that
+			    //   are caused by a data race. Specifically, a non terminating transition which arrives
+			    //   after a terminating transition that occured befor it.
+
+			    // Plan: Whenever a terminating transition is encoutered, it essentially instantiates a property instance.
+			    //       This property instance is considered 'alive' until such time as the system can be considered stable (i.e., eventual consistency has been achieved), at which point the instance can be killed.
+			    //       Whenever a non terminating transition arrives, it should check if it is a transition relevant to a live property instance. If it is, then that live instance should be re-run.
+			    //       The rate of this occurence should be checked.
+			    //       TTL for property instances is Tlambdamax+epsilon. After that point no new out-of-order non-terminating events can arrive.
+			    //       The timestamp of the non-terminating event should be earlier than that of the terminating event that initiated the instance instantiation.
+			    
+			    // TODO - record instance.
+			    
+			    
+			    // Add an instance check notification
                             monitorInstancesToTrigger.add(JSON.stringify(entry.quantified));
-                        }
+                        } else { // Non-terminating transition
+
+			    // TODO - check if the current event is relevant to a live property instance.
+			    //        if it is, rerun that instance.
+
+			}
                     }
                 }
             } else {
