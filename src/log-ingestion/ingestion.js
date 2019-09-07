@@ -14,7 +14,7 @@ const streamName = process.env.WATCHTOWER_INVOCATION_STREAM;
 
 const eventUpdateRE = /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
-function createIngestionHandler (tableName, properties) {
+function createIngestionHandler (eventsTableName, instanceRegistrationTableName, properties) {
 
     const propTerm = {};
 
@@ -22,13 +22,15 @@ function createIngestionHandler (tableName, properties) {
         propTerm[property.name] = proputils.getTerminatingTransitions(property);
     }
 
-    return async function (event) {
-        
+    return async function (event, context) {
+        const functionTimeout = Math.ceil(context.getRemainingTimeInMillis()/1000),
+
         if (debug) {
             console.log(JSON.stringify(event));
         }
         
         const monitorInstancesToTrigger = new Set();
+        const nonTerminatingInstancesToTrigger = new Set();
 
         const payload = new Buffer(event.awslogs.data, 'base64');
 
@@ -45,6 +47,7 @@ function createIngestionHandler (tableName, properties) {
 	    }
 	}
 	
+        const monitorInstancesToRecord = [];
         const entries = [];
 
         for (const logEvent of logEvents) {
@@ -100,15 +103,29 @@ function createIngestionHandler (tableName, properties) {
 			    //       The timestamp of the non-terminating event should be earlier than that of the terminating event that initiated the instance instantiation.
 			    
 			    // TODO - record instance.
+
+                            for (proj of prop.projections) {
+                                const quantifiedProj = {};
+                                for (qvar of proj) {
+                                    const varIDX = e.params.indexOf(qvar);
+
+                                    if (varIDX === 0)
+                                        throw new Error('Expected param to appear in property!');
+                                    
+                                    quantifiedProj[qvar] = eventParams[varIDX];
+                                }
+                                
+                                monitorInstancesToRecord.push({'proj': JSON.stringify(quantifiedProj), 'instance': JSON.stringify(entry.quantified)});
+                            }
 			    
 			    
 			    // Add an instance check notification
                             monitorInstancesToTrigger.add(JSON.stringify(entry.quantified));
                         } else { // Non-terminating transition
-
+                            
 			    // TODO - check if the current event is relevant to a live property instance.
 			    //        if it is, rerun that instance.
-
+                            nonTerminatingInstancesToTrigger.add(JSON.stringify(entry.quantified));
 			}
                     }
                 }
@@ -116,6 +133,51 @@ function createIngestionHandler (tableName, properties) {
                 throw `Malformed event in log: ${logEvent}`;
             }
         }
+
+        // Phase I - register instances
+
+        const batchedRegistrations = [];
+
+        for (let i = 0; i < registrations.length; i += 25) {
+            batchedRegistrations.push(registrations.slice(i, i + 25));
+        }
+
+        for (const batch of batchedRegistrations) {
+            const params = {};
+            
+            params.RequestItems = {};
+            params.RequestItems[instanceRegistrationTableName] = [];
+            
+            
+            for (const item of batch) {
+                const putRequest = {
+                    PutRequest: {
+                        Item: {
+                            "projinst": {S: item.proj},
+                            "propinst": {S: item.instance},
+                            "expiration": {N: Math.floor(Date.now()/1000) + functionTimeout},
+                        }
+                    }
+                };
+                if (debug) {
+                    console.log("** DDB call:");
+                    console.log(JSON.stringify(putRequest));
+                }
+
+                params.RequestItems[instanceRegistrationTableName].push(putRequest);
+            }
+            
+            if (debug) {
+                console.log(JSON.stringify(params));
+            }
+
+            calls.push(ddb.batchWriteItem(params).promise());
+
+        }
+        
+        
+
+        // Phase II - store events
 
         const batchedEntries = [];
 
@@ -130,7 +192,7 @@ function createIngestionHandler (tableName, properties) {
             const params = {};
 
             params.RequestItems = {};
-            params.RequestItems[tableName] = [];
+            params.RequestItems[eventsTableName] = [];
 
 
             for (const item of batch) {
@@ -147,6 +209,7 @@ function createIngestionHandler (tableName, properties) {
                         }
                     }
                 };
+
                 if (item.params.some(x => x !== '')) {
                     putRequest.PutRequest.Item.params = {L: item.params.filter(x => x!=='').map((param) => ({S: param}))};
                 }
@@ -161,7 +224,7 @@ function createIngestionHandler (tableName, properties) {
                     console.log(JSON.stringify(putRequest));
                 }
 
-                params.RequestItems[tableName].push(putRequest);
+                params.RequestItems[eventsTableName].push(putRequest);
             }
             
             if (debug) {
@@ -171,6 +234,8 @@ function createIngestionHandler (tableName, properties) {
             calls.push(ddb.batchWriteItem(params).promise());
         }
 
+        // Phase III - trigger instances by terminating events
+        
         const params = {
             Records: [],
             StreamName: streamName,
@@ -189,6 +254,35 @@ function createIngestionHandler (tableName, properties) {
                 throw "FATAL ERROR: Too many invocation requests!";
         }
 
+        // Phase IV - trigger instances by non-terminating events
+        // TODO - some projections may trigger multiple instances. Needs to be taken into account.
+        const resp = await Promise.all(
+            Array.from(nonTerminatingInstancesToTrigger).map(proj => {
+                const params = {
+                    ExpressionAttributeValues: {
+                        ":v1": {
+                            S: "No One You Know"
+                        },
+                        ":v2": {
+                            N: Math.floor(Date.now()/1000)
+                        },
+                    }, 
+                    KeyConditionExpression: "projinst = :v1 and expiration > :v2", 
+                    ProjectionExpression: "propinst", 
+                    TableName = instanceRegistrationTableName,
+                };
+                
+                return ddb.query(params).promise();
+            })
+        );
+        
+        params.Records.concat(Array.from(new Set([].concat(...resp.map(data => data.Items))
+                                                 .map(item => item.propinst)))
+                              .map(instance => ({
+                                  Data: instance,
+                                  PartitionKey: JSON.stringify(instance).substring(0, 256),
+                              })))
+                           
         if (debug) {           
             console.log("** Kinesis call:");
             console.log(params);
@@ -196,7 +290,6 @@ function createIngestionHandler (tableName, properties) {
         }
         return Promise.all(calls)
             .then(() => params.Records.length > 0 ? kinesis.putRecords(params).promise() : undefined);
-
     };
 }
 
