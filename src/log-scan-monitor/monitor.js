@@ -1,6 +1,6 @@
 const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
-// const ses = new aws.SES();
+const ses = new aws.SES();
 
 const profile = process.env.PROFILE_WATCHTOWER;
 
@@ -33,6 +33,11 @@ function monitorFactory(tableName, prop) {
     return function(instance, arrivalTimestamp) {
         const ddbCalls = [];
 
+	// Check for a checkpoint
+	// If terminated, delete event and finish run
+	// Else, add checkpoint time-stamp to query
+	// At the end of the run, write checkpoint, and delete processed events.
+	
         for (const proj of prop.projections) {
 
             let propinstKey = prop.name;
@@ -62,10 +67,10 @@ function monitorFactory(tableName, prop) {
             .then(results => results.sort((a, b) => a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp)) // Sort by timestamp, with id being a tie-breaker
             .then(results => {
                 let state = {
-                    curr: 'INITIAL',
+		    curr: 'INITIAL',
                     compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
                 };
-
+		
 		let failingInvocation;
 
                 for (const e of results) {
@@ -123,17 +128,16 @@ function monitorFactory(tableName, prop) {
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
-                    // Somehow report to the user that the property had been violated.
-                    // At the moment - fail. TODO: use AWS SES to send an email to someone.
-                    // const params = {
-                    //     Destination: { ToAddresses: [ 'alpernask@vmware.com' ] },
-                    //     Message: {
-                    //         Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
-                    //         Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
-                    //     },
-                    //     Source: 'alpernask@vmware.com',
-                    // };
-                    // return ses.sendEmail(params).promise();
+                    // Report to the user that the property had been violated.
+                    const params = {
+                        Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
+                        Message: {
+                            Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
+                            Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
+                        },
+                        Source: 'mossie.torp@ethereal.email',
+                    };
+                    return ses.sendEmail(params).promise();
 
 		    let arrivalTimeText = '';
 
