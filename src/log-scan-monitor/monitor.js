@@ -29,8 +29,49 @@ function kinesisListenerFactory (handleMonitorInstance) {
     }
 }
 
-function monitorFactory(tableName, prop) {
+function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID) {
+    const params = {};
+    params.ExpressionAttributeNames = { "#ST": "Status" };
+
+    if (isDischarged) {
+	params.ExpressionAttributeValues = {
+	    ":status": {
+		S: "DISCHARGED"
+	    }
+	};
+	params.UpdateExpression = "SET #ST = :status";
+    } else {
+	params.ExpressionAttributeNames[ "#S" ]  = "State";
+	params.ExpressionAttributeNames[ "#TS" ] = "TimeStamp";
+	params.ExpressionAttributeNames[ "#EID" ] = "EventID";
+
+	params.ExpressionAttributeValues = {
+	    ":status": {
+		S: "DISCHARGED"
+	    }, 
+	    ":state": {
+	    	S: state
+	    },
+	    ":time": {
+	    	N: timestamp
+	    },
+	    ":eventid": {
+		N: eventID
+	    },
+	};
+	params.UpdateExpression: "SET #ST = :status, #S = :state, #TS = :time, #EID = :eventid"
+    }
+    params.Key =  {"propinst" : {S : instance}};
+    params.TableName = tableName;
+
+    
+    return ddb.updateItem(params).promise();
+};
+
+function monitorFactory(tableName, checkpointTableName, prop) {
     return function(instance, arrivalTimestamp) {
+	
+	
         const ddbCalls = [];
 
 	// Check for a checkpoint
@@ -137,7 +178,7 @@ function monitorFactory(tableName, prop) {
                         },
                         Source: 'mossie.torp@ethereal.email',
                     };
-                    return ses.sendEmail(params).promise();
+                    await ses.sendEmail(params).promise();
 
 		    let arrivalTimeText = '';
 
@@ -147,6 +188,7 @@ function monitorFactory(tableName, prop) {
 		    
                     // TODO: make a more readable print of the instance.
                     console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
+		    
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
@@ -156,6 +198,36 @@ function monitorFactory(tableName, prop) {
 
                     console.log(`Property ${prop.name} was not violated (but might be violated by future events) for property instance ${JSON.stringify(instance)}`);
                 }
+		
+		// GC
+		if (state.curr in ['SUCCESS', 'FAILURE']) {
+		    // Mark instance as discharged
+		    await updateInstanceStatus(true, checkpointTableName);    
+		    
+		    // Mark TTL for all instance events (not projections).
+		    return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
+				       .map(e => {
+					   const params = {
+					       Key: {
+						   e.propinst,
+						   e.uuid,
+					       },
+					       ExpressionAttributeNames: {
+						   "#TTL": "Expiration"
+					       },
+					       ExpressionAttributeValues: {
+						   ":exp": {
+						       N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.						      
+						   },
+					       },
+					       UpdateExpression: "SET #TTL = :exp",
+					       TableName: tableName,
+
+					   }
+					   return ddb.updateItem(params).promise();
+				       }));
+		}
+		
 
             })
             .catch((err) => console.log(err));
