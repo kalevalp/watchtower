@@ -148,7 +148,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 		// Property is active and had been previously checkpointed. Need to start from the checkpoint.
 		const eventTimestamp = checkpoint.Item.Timestamp.N;
 		queryRequest.ExpressionAttributeValues[":ts"] = {"N": eventTimestamp};
-		queryRequest.FilterExpression = "Timestamp > :ts"
+		queryRequest.FilterExpression = "Timestamp > :ts" // TODO - add to filter a check for the existence of the ttl field.
 	    }
 
             ddbCalls.push(getEvents([], queryRequest));
