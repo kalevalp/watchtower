@@ -47,8 +47,8 @@ function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID
 
 	params.ExpressionAttributeValues = {
 	    ":status": {
-		S: "DISCHARGED"
-	    }, 
+		S: "ACTIVE"
+	    },
 	    ":state": {
 	    	S: state
 	    },
@@ -64,21 +64,63 @@ function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID
     params.Key =  {"propinst" : {S : instance}};
     params.TableName = tableName;
 
-    
+
     return ddb.updateItem(params).promise();
 };
 
 function monitorFactory(tableName, checkpointTableName, prop) {
     return function(instance, arrivalTimestamp) {
-	
-	
+
+
         const ddbCalls = [];
 
 	// Check for a checkpoint
 	// If terminated, delete event and finish run
 	// Else, add checkpoint time-stamp to query
 	// At the end of the run, write checkpoint, and delete processed events.
-	
+
+	const params = {
+	    Key: {"propinst": {S: instance}},
+	    TableName: {checkpointTableName},
+	}
+	const checkpoint = await ddb.getItem(params).promise();
+	if (checkpoint.Item &&
+	    checkpoint.Item.Status &&
+	    checkpoint.Item.Status.S === "DISCHARGED") {
+	    // received some terminating event after the property instance had been discharged. Need to do some GC.
+	    const eventTimestamp = checkpoint.Item.Timestamp.N;
+	    const queryParams = {
+                TableName: tableName,
+                KeyConditionExpression: `propinst = :keyval`,
+                ExpressionAttributeValues: {":keyval": {"S": `${instance}`}}, // TODO - Need to properly format the key. Also, go over other uses of instance and make sure they're correct!
+		// TODO - add a timestamp filter.
+	    }
+
+	    const events = await getEvents([], queryParams);
+	    // TODO - refactor
+	    return Promise.all(events.filter(e => !e.Expiration).map(e => {
+					   const params = {
+					       Key: {
+						   e.propinst,
+						   e.uuid, // TODO - double-check the field name. Also in other instance of this code.
+					       },
+					       ExpressionAttributeNames: {
+						   "#TTL": "Expiration"
+					       },
+					       ExpressionAttributeValues: {
+						   ":exp": {
+						       N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
+						   },
+					       },
+					       UpdateExpression: "SET #TTL = :exp",
+					       TableName: tableName,
+
+					   }
+					   return ddb.updateItem(params).promise();
+				       }));
+	}
+
+
         for (const proj of prop.projections) {
 
             let propinstKey = prop.name;
@@ -100,8 +142,17 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                 ExpressionAttributeValues: {":keyval": {"S": `${propinstKey}`}},
             };
 
+	    if (checkpoint.Items &&
+		checkpoint.Items.Status &&
+		checkpoint.Item.Status.S === "ACTIVE") {
+		// Property is active and had been previously checkpointed. Need to start from the checkpoint.
+		const eventTimestamp = checkpoint.Item.Timestamp.N;
+		queryRequest.ExpressionAttributeValues[":ts"] = {"N": eventTimestamp};
+		queryRequest.FilterExpression = "Timestamp > :ts"
+	    }
+
             ddbCalls.push(getEvents([], queryRequest));
-        }        
+        }
 
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
@@ -111,7 +162,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 		    curr: 'INITIAL',
                     compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
                 };
-		
+
 		let failingInvocation;
 
                 for (const e of results) {
@@ -163,7 +214,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
 			if (toState === 'FAILURE')
 			    failingInvocation = eventInvocationUuid;
-			
+
                     }
                 }
 
@@ -185,10 +236,10 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 		    if (profile) {
 			arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
 		    }
-		    
+
                     // TODO: make a more readable print of the instance.
                     console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
-		    
+
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
@@ -198,12 +249,12 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
                     console.log(`Property ${prop.name} was not violated (but might be violated by future events) for property instance ${JSON.stringify(instance)}`);
                 }
-		
+
 		// GC
 		if (state.curr in ['SUCCESS', 'FAILURE']) {
 		    // Mark instance as discharged
-		    await updateInstanceStatus(true, checkpointTableName);    
-		    
+		    await updateInstanceStatus(true, checkpointTableName);
+
 		    // Mark TTL for all instance events (not projections).
 		    return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
 				       .map(e => {
@@ -217,7 +268,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 					       },
 					       ExpressionAttributeValues: {
 						   ":exp": {
-						       N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.						      
+						       N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
 						   },
 					       },
 					       UpdateExpression: "SET #TTL = :exp",
@@ -227,7 +278,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 					   return ddb.updateItem(params).promise();
 				       }));
 		}
-		
+
 
             })
             .catch((err) => console.log(err));
@@ -236,4 +287,3 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
 module.exports.kinesisListenerFactory = kinesisListenerFactory;
 module.exports.monitorFactory = monitorFactory;
-

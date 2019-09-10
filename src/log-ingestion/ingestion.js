@@ -28,7 +28,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
         if (debug) {
             console.log(JSON.stringify(event));
         }
-        
+
         const monitorInstancesToTrigger = new Set();
         const nonTerminatingInstancesToTrigger = new Set();
 
@@ -46,7 +46,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
 		console.log(logEvent);
 	    }
 	}
-	
+
         const monitorInstancesToRecord = [];
         const entries = [];
 
@@ -82,7 +82,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
                             if (varIDX !== -1) {
                                 propinstKey+=qvar;
                                 propinstKey+=eventParams[varIDX];
-                                entry.quantified[qvar] = eventParams[varIDX];                               
+                                entry.quantified[qvar] = eventParams[varIDX];
                             }
                         }
                         entry.propinst = propinstKey; // Partition Key
@@ -101,7 +101,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
 			    //       The rate of this occurence should be checked.
 			    //       TTL for property instances is Tlambdamax+epsilon. After that point no new out-of-order non-terminating events can arrive.
 			    //       The timestamp of the non-terminating event should be earlier than that of the terminating event that initiated the instance instantiation.
-			    
+
 			    // TODO - record instance.
 
                             for (proj of prop.projections) {
@@ -111,18 +111,18 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
 
                                     if (varIDX === 0)
                                         throw new Error('Expected param to appear in property!');
-                                    
+
                                     quantifiedProj[qvar] = eventParams[varIDX];
                                 }
-                                
+
                                 monitorInstancesToRecord.push({'proj': JSON.stringify(quantifiedProj), 'instance': JSON.stringify(entry.quantified)});
                             }
-			    
-			    
+
+
 			    // Add an instance check notification
                             monitorInstancesToTrigger.add(JSON.stringify(entry.quantified));
                         } else { // Non-terminating transition
-                            
+
 			    // TODO - check if the current event is relevant to a live property instance.
 			    //        if it is, rerun that instance.
                             nonTerminatingInstancesToTrigger.add(JSON.stringify(entry.quantified));
@@ -144,11 +144,11 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
 
         for (const batch of batchedRegistrations) {
             const params = {};
-            
+
             params.RequestItems = {};
             params.RequestItems[instanceRegistrationTableName] = [];
-            
-            
+
+
             for (const item of batch) {
                 const putRequest = {
                     PutRequest: {
@@ -166,7 +166,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
 
                 params.RequestItems[instanceRegistrationTableName].push(putRequest);
             }
-            
+
             if (debug) {
                 console.log(JSON.stringify(params));
             }
@@ -174,8 +174,8 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
             calls.push(ddb.batchWriteItem(params).promise());
 
         }
-        
-        
+
+
 
         // Phase II - store events
 
@@ -213,7 +213,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
                 if (item.params.some(x => x !== '')) {
                     putRequest.PutRequest.Item.params = {L: item.params.filter(x => x!=='').map((param) => ({S: param}))};
                 }
-                
+
                 for (const varname in item.quantified) {
                     if (item.quantified.hasOwnProperty(varname)) {
                         putRequest.PutRequest.Item[varname] = {S: item.quantified[varname]};
@@ -226,7 +226,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
 
                 params.RequestItems[eventsTableName].push(putRequest);
             }
-            
+
             if (debug) {
                 console.log(JSON.stringify(params));
             }
@@ -235,7 +235,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
         }
 
         // Phase III - trigger instances by terminating events
-        
+
         const params = {
             Records: [],
             StreamName: streamName,
@@ -266,24 +266,24 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
                         ":v2": {
                             N: Math.floor(Date.now()/1000)
                         },
-                    }, 
-                    KeyConditionExpression: "projinst = :v1 and expiration > :v2", 
-                    ProjectionExpression: "propinst", 
+                    },
+                    KeyConditionExpression: "projinst = :v1 and expiration > :v2",
+                    ProjectionExpression: "propinst",
                     TableName = instanceRegistrationTableName,
                 };
-                
+
                 return ddb.query(params).promise();
             })
         );
-        
+
         params.Records.concat(Array.from(new Set([].concat(...resp.map(data => data.Items))
                                                  .map(item => item.propinst)))
                               .map(instance => ({
                                   Data: instance,
                                   PartitionKey: JSON.stringify(instance).substring(0, 256),
                               })))
-                           
-        if (debug) {           
+
+        if (debug) {
             console.log("** Kinesis call:");
             console.log(params);
             console.log(monitorInstancesToTrigger);
