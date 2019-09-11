@@ -254,30 +254,33 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 		if (state.curr in ['SUCCESS', 'FAILURE']) {
 		    // Mark instance as discharged
 		    await updateInstanceStatus(true, checkpointTableName);
-
-		    // Mark TTL for all instance events (not projections).
-		    return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
-				       .map(e => {
-					   const params = {
-					       Key: {
-						   e.propinst,
-						   e.uuid,
-					       },
-					       ExpressionAttributeNames: {
-						   "#TTL": "Expiration"
-					       },
-					       ExpressionAttributeValues: {
-						   ":exp": {
-						       N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
-						   },
-					       },
-					       UpdateExpression: "SET #TTL = :exp",
-					       TableName: tableName,
-
-					   }
-					   return ddb.updateItem(params).promise();
-				       }));
+		} else {
+		    // Checkpoint the instance
+		    const lastEvent = results[results.length - 1];
+		    await updateInstanceStatus(false, checkpointTableName, state.curr, lastEvent.timestamp.N, lastEvent.id.S);
 		}
+
+		// Mark TTL for all instance events (not projections).
+		return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
+				   .map(e => {
+				       const params = {
+					   Key: {
+					       e.propinst,
+					       e.uuid,
+					   },
+					   ExpressionAttributeNames: {
+					       "#TTL": "Expiration"
+					   },
+					   ExpressionAttributeValues: {
+					       ":exp": {
+						   N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
+					       },
+					   },
+					   UpdateExpression: "SET #TTL = :exp",
+					   TableName: tableName,
+				       }
+				       return ddb.updateItem(params).promise();
+				   }));
 
 
             })
