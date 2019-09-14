@@ -220,6 +220,15 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
+                    
+                    // Need to ensure that a violation had actually occured.
+                    // There could have been a data race, where some events were not yet written to the DB when this checker started running.
+                    
+                    // Check within the eventual-consistency window, if any new events (non-det transitions) might have negated the violation.
+                    // If so, read the log and see if there might have been any other events during that time-period.
+                    
+                    
+                    
                     // Report to the user that the property had been violated.
                     const params = {
                         Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
