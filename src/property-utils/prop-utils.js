@@ -153,6 +153,123 @@ function getTerminatingTransitions(property) {
     return terminatingTransitions;
 }
 
+// Kind of ignores guarded transitions at the moment.
+function getReachabilityMap(property) {
+    const states = getReachableStates(property);
+    const reachabilityMap = {};
+
+    for (state of states) {
+	const stack = [state];
+	const reachable = [];
+	while (stack.length !== 0){
+	    curr = stack.pop();
+	    for (transition of property.stateMachine) {
+		if (transition[curr] &&
+		    !reachable.includes(transition[curr].to)) {
+		    reachable.push(transition[curr].to);
+		    stack.push(transition[curr].to);
+		}
+	    }
+	}
+	reachabilityMap[state] = reachable;
+    }
+
+    return reachabilityMap;
+
+}
+
+// stablePrefix is the part of the execution that is guaranteed to be consistent
+// partialTail is the part of the execution that might be missing some events
+// stablePrefix::partialTail lead to a violation
+// expected type of execution: events, as returned for DDB
+// Return: false if violation cannot be avoided via an extension of partialTail
+//         true if it can be
+//         TODO - consider returning the potential event sequence.
+function hasNonViolatingExtension(property, stablePrefix, partialTail, violationState) {
+    const reachabilityMap = getReachabilityMap(property);
+
+    let state = {
+	curr: 'INITIAL',
+        compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
+    };
+
+    let failingInvocation;
+
+    for (const e of stablePrefix) {
+	const eventType = e.type.S;
+	const eventParams = e.params ? e.params.L.map(param => param.S) : [];
+	const eventInvocationUuid = e.invocation.S;
+
+	// TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
+	const transition =
+              prop.stateMachine[eventType]['ANY'] ?
+              prop.stateMachine[eventType]['ANY'] :
+              prop.stateMachine[eventType][state.curr];
+
+	if (transition) {
+            // Sanity check that the quantified variable assignment matches the current property instance
+            for (let i = 0; i < prop.stateMachine[eventType].params.length; i++) {
+		const varname = prop.stateMachine[eventType].params[i];
+
+		if (prop.quantifiedVariables.includes(varname)) { // This variable is used to determine the property instance
+
+                    if (eventParams[i] !== instance[varname]) {
+			throw "ERROR: Encountered an event whose parameters don't match the instance.";
+                    }
+		}
+            }
+
+            let update;
+            let toState;
+
+            if (transition['GUARDED_TRANSITION']) {
+		const guardValuation = transition['GUARDED_TRANSITION'].guard(...eventParams);
+
+		if (guardValuation) {
+                    update = transition['GUARDED_TRANSITION'].onGuardHolds.update;
+                    toState = transition['GUARDED_TRANSITION'].onGuardHolds.to;
+
+		} else {
+                    update = transition['GUARDED_TRANSITION'].onGuardViolated.update;
+                    toState = transition['GUARDED_TRANSITION'].onGuardViolated.to;
+		}
+            } else {
+		update = transition.update;
+		toState = transition.to;
+            }
+            if (update)
+		update(state.compound, ...eventParams);
+
+            state.curr = toState;
+
+	    if (toState === 'FAILURE')
+		failingInvocation = eventInvocationUuid;
+
+	}
+    }
+
+    function extensionSearch(fromState, tailSuffix, targetState) {
+	if (tailSuffix.length > 0) {
+	    event = tailSuffix[0];
+	    const reachable = reachabilityMap[fromState];
+	    const reachableAfterStep = [];
+	    for (state of reachable) {
+		const toState = property.stateMachine[event.type.S][state].to // TODO - make sure type is correct
+		if (!reachableAfterStep.contains(toState))
+		    reachableAfterStep.push(toState);
+	    }
+	    for (state of reachableAfterStep) {
+		const mayReachAnotherState = extensionSearch(state, tailSuffix.slice(1), targetState);
+		if (mayReachAnotherState)
+		    return true;
+	    }
+	}
+	return false;
+    }
+
+    return extensionSearch(state.curr, partialTail, violationState)
+}
+
 module.exports.getTerminatingTransitions = getTerminatingTransitions;
 
 
