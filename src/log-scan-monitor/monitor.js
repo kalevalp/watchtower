@@ -1,8 +1,10 @@
 const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
 const ses = new aws.SES();
+const cwl = new aws.CloudWatchLogs();
 
 const profile = process.env.PROFILE_WATCHTOWER;
+const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
 
 function getEvents (collectedEvents, params) {
     return ddb.query(params).promise()
@@ -120,6 +122,8 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 				       }));
 	}
 
+	const preCallTimems = Date.now();
+	const preCallTime = Math.ceil(Date.now()/1000);
 
         for (const proj of prop.projections) {
 
@@ -220,35 +224,65 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
-                    
                     // Need to ensure that a violation had actually occured.
                     // There could have been a data race, where some events were not yet written to the DB when this checker started running.
-                    
-                    // Check within the eventual-consistency window, if any new events (non-det transitions) might have negated the violation.
-                    // If so, read the log and see if there might have been any other events during that time-period.
-                    
-                    
-                    
-                    // Report to the user that the property had been violated.
-                    const params = {
-                        Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
-                        Message: {
-                            Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
-                            Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
-                        },
-                        Source: 'mossie.torp@ethereal.email',
-                    };
-                    await ses.sendEmail(params).promise();
 
-		    let arrivalTimeText = '';
+		    // Step 1: Check if, given the violation, there exists an extension (within the eventual consistency windos) that does not lead to a violation.
+		    const stabilityTime = preCallTime - ingestionTimeOut - 1; // Assumes times are in seconds.
+		    const stablePrefix = results.filter(e => e.timestamp < stabilityTime);
+		    const partialTail = results.filter(e => e.timestamp >= stabilityTime);
 
-		    if (profile) {
-			arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
+		    let violationFalseAlarm = false;
+
+		    const canHazExtenstion = hasNonViolatingExtension(property, stablePrefix, partialTail, state.curr);
+
+                    // Step 2: Read the log and see if there might have been any other events during that time-period.
+		    if (canHazExtenstion) {
+			// Read log.
+			// Option 1: CWL Insight query.
+
+			// Option 2: CWL filter call (per log group(!))
+			const missingEvents = await Promise.all(logGroups.map(lg => {
+			    const params = {
+				logGroupName: lg,
+				startTime: 'NUMBER_VALUE',
+				endTime: 'NUMBER_VALUE',
+				filterPattern: 'STRING_VALUE',
+			    };
+			    return cloudwatchlogs.filterLogEvents(params).promise();
+			}));
+
+			missingEvents.map(event => processEvent(event))
+			    .filter(event => actuallyMissing(event))
+
+			if (checkProperty(property, stablePrefix :: fullTail)) {
+			    violationFalseAlarm = true;
+			}
+
+			// Option 3: Delay rerun by delta
 		    }
 
-                    // TODO: make a more readable print of the instance.
-                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
+		    if (!violationFalseAlarm) {
+			// Report to the user that the property had been violated.
+			const params = {
+                            Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
+                            Message: {
+				Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
+				Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
+                            },
+                            Source: 'mossie.torp@ethereal.email',
+			};
+			await ses.sendEmail(params).promise();
 
+			let arrivalTimeText = '';
+
+			if (profile) {
+			    arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
+			}
+
+			// TODO: make a more readable print of the instance.
+			console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
+		    }
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
@@ -260,6 +294,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                 }
 
 		// GC
+		// TODO - GC is actually a little problematic, need to only GC up to stable point. Consider rewriting the entire to checker to split it into two parts, stable check and unstable check.
 		if (state.curr in ['SUCCESS', 'FAILURE']) {
 		    // Mark instance as discharged
 		    await updateInstanceStatus(true, checkpointTableName);
