@@ -2,6 +2,8 @@ const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
 const ses = new aws.SES();
 const cwl = new aws.CloudWatchLogs();
+const proputils = require('watchtower-property-utils');
+
 
 const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
@@ -36,94 +38,94 @@ function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID
     params.ExpressionAttributeNames = { "#ST": "Status" };
 
     if (isDischarged) {
-	params.ExpressionAttributeValues = {
-	    ":status": {
-		S: "DISCHARGED"
-	    }
-	};
-	params.UpdateExpression = "SET #ST = :status";
+        params.ExpressionAttributeValues = {
+            ":status": {
+                S: "DISCHARGED"
+            }
+        };
+        params.UpdateExpression = "SET #ST = :status";
     } else {
-	params.ExpressionAttributeNames[ "#S" ]  = "State";
-	params.ExpressionAttributeNames[ "#TS" ] = "TimeStamp";
-	params.ExpressionAttributeNames[ "#EID" ] = "EventID";
+        params.ExpressionAttributeNames[ "#S" ]  = "State";
+        params.ExpressionAttributeNames[ "#TS" ] = "TimeStamp";
+        params.ExpressionAttributeNames[ "#EID" ] = "EventID";
 
-	params.ExpressionAttributeValues = {
-	    ":status": {
-		S: "ACTIVE"
-	    },
-	    ":state": {
-	    	S: state
-	    },
-	    ":time": {
-	    	N: timestamp
-	    },
-	    ":eventid": {
-		N: eventID
-	    },
-	};
-	params.UpdateExpression: "SET #ST = :status, #S = :state, #TS = :time, #EID = :eventid"
+        params.ExpressionAttributeValues = {
+            ":status": {
+                S: "ACTIVE"
+            },
+            ":state": {
+                S: state
+            },
+            ":time": {
+                N: timestamp
+            },
+            ":eventid": {
+                N: eventID
+            },
+        };
+        params.UpdateExpression = "SET #ST = :status, #S = :state, #TS = :time, #EID = :eventid"
     }
     params.Key =  {"propinst" : {S : instance}};
     params.TableName = tableName;
 
 
     return ddb.updateItem(params).promise();
-};
+}
 
 function monitorFactory(tableName, checkpointTableName, prop) {
-    return function(instance, arrivalTimestamp) {
+    return async function(instance, arrivalTimestamp) {
 
 
         const ddbCalls = [];
 
-	// Check for a checkpoint
-	// If terminated, delete event and finish run
-	// Else, add checkpoint time-stamp to query
-	// At the end of the run, write checkpoint, and delete processed events.
+        // Check for a checkpoint
+        // If terminated, delete event and finish run
+        // Else, add checkpoint time-stamp to query
+        // At the end of the run, write checkpoint, and delete processed events.
 
-	const params = {
-	    Key: {"propinst": {S: instance}},
-	    TableName: {checkpointTableName},
-	}
-	const checkpoint = await ddb.getItem(params).promise();
-	if (checkpoint.Item &&
-	    checkpoint.Item.Status &&
-	    checkpoint.Item.Status.S === "DISCHARGED") {
-	    // received some terminating event after the property instance had been discharged. Need to do some GC.
-	    const eventTimestamp = checkpoint.Item.Timestamp.N;
-	    const queryParams = {
+        const params = {
+            Key: {"propinst": {S: instance}},
+            TableName: {checkpointTableName},
+        };
+        const checkpoint = await ddb.getItem(params).promise();
+        if (checkpoint.Item &&
+            checkpoint.Item.Status &&
+            checkpoint.Item.Status.S === "DISCHARGED") {
+            // received some terminating event after the property instance had been discharged. Need to do some GC.
+            const eventTimestamp = checkpoint.Item.Timestamp.N;
+            const queryParams = {
                 TableName: tableName,
                 KeyConditionExpression: `propinst = :keyval`,
                 ExpressionAttributeValues: {":keyval": {"S": `${instance}`}}, // TODO - Need to properly format the key. Also, go over other uses of instance and make sure they're correct!
-		// TODO - add a timestamp filter.
-	    }
+                // TODO - add a timestamp filter.
+            };
 
-	    const events = await getEvents([], queryParams);
-	    // TODO - refactor
-	    return Promise.all(events.filter(e => !e.Expiration).map(e => {
-					   const params = {
-					       Key: {
-						   e.propinst,
-						   e.uuid, // TODO - double-check the field name. Also in other instance of this code.
-					       },
-					       ExpressionAttributeNames: {
-						   "#TTL": "Expiration"
-					       },
-					       ExpressionAttributeValues: {
-						   ":exp": {
-						       N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
-						   },
-					       },
-					       UpdateExpression: "SET #TTL = :exp",
-					       TableName: tableName,
+            const events = await getEvents([], queryParams);
+            // TODO - refactor
+            return Promise.all(events.filter(e => !e.Expiration).map(e => {
+                const params = {
+                    Key: {
+                        propinst: e.propinst,
+                        uid: e.uuid, // TODO - double-check the field name. Also in other instance of this code.
+                    },
+                    ExpressionAttributeNames: {
+                        "#TTL": "Expiration"
+                    },
+                    ExpressionAttributeValues: {
+                        ":exp": {
+                            N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
+                        },
+                    },
+                    UpdateExpression: "SET #TTL = :exp",
+                    TableName: tableName,
 
-					   }
-					   return ddb.updateItem(params).promise();
-				       }));
-	}
+                };
+                return ddb.updateItem(params).promise();
+            }));
+        }
 
-	const preCallTimems = Date.now();
-	const preCallTime = Math.ceil(Date.now()/1000);
+        const preCallTimems = Date.now();
+        const preCallTime = Math.ceil(Date.now()/1000);
 
         for (const proj of prop.projections) {
 
@@ -146,14 +148,14 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                 ExpressionAttributeValues: {":keyval": {"S": `${propinstKey}`}},
             };
 
-	    if (checkpoint.Items &&
-		checkpoint.Items.Status &&
-		checkpoint.Item.Status.S === "ACTIVE") {
-		// Property is active and had been previously checkpointed. Need to start from the checkpoint.
-		const eventTimestamp = checkpoint.Item.Timestamp.N;
-		queryRequest.ExpressionAttributeValues[":ts"] = {"N": eventTimestamp};
-		queryRequest.FilterExpression = "Timestamp > :ts" // TODO - add to filter a check for the existence of the ttl field.
-	    }
+            if (checkpoint.Items &&
+                checkpoint.Items.Status &&
+                checkpoint.Item.Status.S === "ACTIVE") {
+                // Property is active and had been previously checkpointed. Need to start from the checkpoint.
+                const eventTimestamp = checkpoint.Item.Timestamp.N;
+                queryRequest.ExpressionAttributeValues[":ts"] = {"N": eventTimestamp};
+                queryRequest.FilterExpression = "Timestamp > :ts" // TODO - add to filter a check for the existence of the ttl field.
+            }
 
             ddbCalls.push(getEvents([], queryRequest));
         }
@@ -161,128 +163,70 @@ function monitorFactory(tableName, checkpointTableName, prop) {
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
             .then(results => results.sort((a, b) => a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp)) // Sort by timestamp, with id being a tie-breaker
-            .then(results => {
-                let state = {
-		    curr: 'INITIAL',
-                    compound: prop.getNewCompoundState ? prop.getNewCompoundState() : {},
-                };
-
-		let failingInvocation;
-
-                for (const e of results) {
-                    const eventType = e.type.S;
-                    const eventParams = e.params ? e.params.L.map(param => param.S) : [];
-		    const eventInvocationUuid = e.invocation.S;
-
-                    // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
-                    const transition =
-                        prop.stateMachine[eventType]['ANY'] ?
-                            prop.stateMachine[eventType]['ANY'] :
-                            prop.stateMachine[eventType][state.curr];
-
-                    if (transition) {
-                        // Sanity check that the quantified variable assignment matches the current property instance
-                        for (let i = 0; i < prop.stateMachine[eventType].params.length; i++) {
-                            const varname = prop.stateMachine[eventType].params[i];
-
-                            if (prop.quantifiedVariables.includes(varname)) { // This variable is used to determine the property instance
-
-                                if (eventParams[i] !== instance[varname]) {
-                                    throw "ERROR: Encountered an event whose parameters don't match the instance.";
-                                }
-                            }
-                        }
-
-                        let update;
-                        let toState;
-
-                        if (transition['GUARDED_TRANSITION']) {
-                            const guardValuation = transition['GUARDED_TRANSITION'].guard(...eventParams);
-
-                            if (guardValuation) {
-                                update = transition['GUARDED_TRANSITION'].onGuardHolds.update;
-                                toState = transition['GUARDED_TRANSITION'].onGuardHolds.to;
-
-                            } else {
-                                update = transition['GUARDED_TRANSITION'].onGuardViolated.update;
-                                toState = transition['GUARDED_TRANSITION'].onGuardViolated.to;
-                            }
-                        } else {
-                            update = transition.update;
-                            toState = transition.to;
-                        }
-                        if (update)
-                            update(state.compound, ...eventParams);
-
-                        state.curr = toState;
-
-			if (toState === 'FAILURE')
-			    failingInvocation = eventInvocationUuid;
-
-                    }
-                }
+            .then(async results => {
+                let {state, lastProcessedEvent} = proputils.runProperty(prop, results);
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
                     // Need to ensure that a violation had actually occured.
                     // There could have been a data race, where some events were not yet written to the DB when this checker started running.
 
-		    // Step 1: Check if, given the violation, there exists an extension (within the eventual consistency windos) that does not lead to a violation.
-		    const stabilityTime = preCallTime - ingestionTimeOut - 1; // Assumes times are in seconds.
-		    const stablePrefix = results.filter(e => e.timestamp < stabilityTime);
-		    const partialTail = results.filter(e => e.timestamp >= stabilityTime);
+                    // Step 1: Check if, given the violation, there exists an extension (within the eventual consistency windos) that does not lead to a violation.
+                    const stabilityTime = preCallTime - ingestionTimeOut - 1; // Assumes times are in seconds.
+                    const stablePrefix = results.filter(e => e.timestamp < stabilityTime);
+                    const partialTail = results.filter(e => e.timestamp >= stabilityTime);
 
-		    let violationFalseAlarm = false;
+                    let violationFalseAlarm = false;
 
-		    const canHazExtenstion = hasNonViolatingExtension(property, stablePrefix, partialTail, state.curr);
+                    const canHazExtenstion = hasNonViolatingExtension(property, stablePrefix, partialTail, state.curr);
 
                     // Step 2: Read the log and see if there might have been any other events during that time-period.
-		    if (canHazExtenstion) {
-			// Read log.
-			// Option 1: CWL Insight query.
+                    if (canHazExtenstion) {
+                        // Read log.
+                        // Option 1: CWL Insight query.
 
-			// Option 2: CWL filter call (per log group(!))
-			const missingEvents = await Promise.all(logGroups.map(lg => {
-			    const params = {
-				logGroupName: lg,
-				startTime: 'NUMBER_VALUE',
-				endTime: 'NUMBER_VALUE',
-				filterPattern: 'STRING_VALUE',
-			    };
-			    return cloudwatchlogs.filterLogEvents(params).promise();
-			}));
+                        // Option 2: CWL filter call (per log group(!))
+                        const missingEvents = await Promise.all(logGroups.map(lg => {
+                            const params = {
+                                logGroupName: lg,
+                                startTime: 'NUMBER_VALUE',
+                                endTime: 'NUMBER_VALUE',
+                                filterPattern: 'STRING_VALUE',
+                            };
+                            return cloudwatchlogs.filterLogEvents(params).promise();
+                        }));
 
-			missingEvents.map(event => processEvent(event))
-			    .filter(event => actuallyMissing(event))
+                        missingEvents.map(event => processEvent(event))
+                            .filter(event => actuallyMissing(event));
 
-			if (checkProperty(property, stablePrefix :: fullTail)) {
-			    violationFalseAlarm = true;
-			}
+                        if (checkProperty(property, stablePrefix :: fullTail)) {
+                            violationFalseAlarm = true;
+                        }
 
-			// Option 3: Delay rerun by delta
-		    }
+                        // Option 3: Delay rerun by delta
+                    }
 
-		    if (!violationFalseAlarm) {
-			// Report to the user that the property had been violated.
-			const params = {
+                    if (!violationFalseAlarm) {
+                        // Report to the user that the property had been violated.
+                        const params = {
                             Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
                             Message: {
-				Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
-				Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
+                                Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
+                                Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
                             },
                             Source: 'mossie.torp@ethereal.email',
-			};
-			await ses.sendEmail(params).promise();
+                        };
+                        await ses.sendEmail(params).promise();
 
-			let arrivalTimeText = '';
+                        let arrivalTimeText = '';
 
-			if (profile) {
-			    arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
-			}
+                        if (profile) {
+                            arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
+                        }
 
-			// TODO: make a more readable print of the instance.
-			console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
-		    }
+                        // TODO: make a more readable print of the instance.
+                        console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
+                    }
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
 
@@ -293,44 +237,44 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                     console.log(`Property ${prop.name} was not violated (but might be violated by future events) for property instance ${JSON.stringify(instance)}`);
                 }
 
-		// GC
-		// TODO - GC is actually a little problematic, need to only GC up to stable point. Consider rewriting the entire to checker to split it into two parts, stable check and unstable check.
-		if (state.curr in ['SUCCESS', 'FAILURE']) {
-		    // Mark instance as discharged
-		    await updateInstanceStatus(true, checkpointTableName);
-		} else {
-		    // Checkpoint the instance
-		    const lastEvent = results[results.length - 1];
-		    await updateInstanceStatus(false, checkpointTableName, state.curr, lastEvent.timestamp.N, lastEvent.id.S);
-		}
+                // GC
+                // TODO - GC is actually a little problematic, need to only GC up to stable point. Consider rewriting the entire to checker to split it into two parts, stable check and unstable check.
+                if (state.curr in ['SUCCESS', 'FAILURE']) {
+                    // Mark instance as discharged
+                    await updateInstanceStatus(true, checkpointTableName);
+                } else {
+                    // Checkpoint the instance
+                    const lastEvent = results[results.length - 1];
+                    await updateInstanceStatus(false, checkpointTableName, state.curr, lastEvent.timestamp.N, lastEvent.id.S);
+                }
 
-		// Mark TTL for all instance events (not projections).
-		return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
-				   .map(e => {
-				       const params = {
-					   Key: {
-					       e.propinst,
-					       e.uuid,
-					   },
-					   ExpressionAttributeNames: {
-					       "#TTL": "Expiration"
-					   },
-					   ExpressionAttributeValues: {
-					       ":exp": {
-						   N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
-					       },
-					   },
-					   UpdateExpression: "SET #TTL = :exp",
-					   TableName: tableName,
-				       }
-				       return ddb.updateItem(params).promise();
-				   }));
+                // Mark TTL for all instance events (not projections).
+                return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
+                    .map(e => {
+                        const params = {
+                            Key: {
+                                propinst: e.propinst,
+                                uuid: e.uuid,
+                            },
+                            ExpressionAttributeNames: {
+                                "#TTL": "Expiration"
+                            },
+                            ExpressionAttributeValues: {
+                                ":exp": {
+                                    N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
+                                },
+                            },
+                            UpdateExpression: "SET #TTL = :exp",
+                            TableName: tableName,
+                        };
+                        return ddb.updateItem(params).promise();
+                    }));
 
 
             })
             .catch((err) => console.log(err));
     }
-};
+}
 
 module.exports.kinesisListenerFactory = kinesisListenerFactory;
 module.exports.monitorFactory = monitorFactory;

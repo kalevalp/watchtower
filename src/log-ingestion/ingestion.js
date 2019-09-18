@@ -23,7 +23,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
     }
 
     return async function (event, context) {
-        const functionTimeout = Math.ceil(context.getRemainingTimeInMillis()/1000),
+        const functionTimeout = Math.ceil(context.getRemainingTimeInMillis()/1000);
 
         if (debug) {
             console.log(JSON.stringify(event));
@@ -269,7 +269,7 @@ function createIngestionHandler (eventsTableName, instanceRegistrationTableName,
                     },
                     KeyConditionExpression: "projinst = :v1 and expiration > :v2",
                     ProjectionExpression: "propinst",
-                    TableName = instanceRegistrationTableName,
+                    TableName: instanceRegistrationTableName,
                 };
 
                 return ddb.query(params).promise();
