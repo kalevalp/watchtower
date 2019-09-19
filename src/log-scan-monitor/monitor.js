@@ -72,10 +72,13 @@ function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID
     return ddb.updateItem(params).promise();
 }
 
+// Sort by timestamp, with id being a tie-breaker
+function eventOrderComparator(a, b) {
+    return a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp;
+}
+
 function monitorFactory(tableName, checkpointTableName, prop) {
     return async function(instance, arrivalTimestamp) {
-
-
         const ddbCalls = [];
 
         // Check for a checkpoint
@@ -88,6 +91,27 @@ function monitorFactory(tableName, checkpointTableName, prop) {
             TableName: {checkpointTableName},
         };
         const checkpoint = await ddb.getItem(params).promise();
+
+        function updateInstanceExpiration(e) {
+            const params = {
+                Key: {
+                    propinst: e.propinst,
+                    uid: e.uuid, // TODO - double-check the field name. Also in other instance of this code.
+                },
+                ExpressionAttributeNames: {
+                    "#TTL": "Expiration"
+                },
+                ExpressionAttributeValues: {
+                    ":exp": {
+                        N: Math.ceil(Date.now() / 1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
+                    },
+                },
+                UpdateExpression: "SET #TTL = :exp",
+                TableName: tableName,
+            };
+            return ddb.updateItem(params).promise();
+        }
+
         if (checkpoint.Item &&
             checkpoint.Item.Status &&
             checkpoint.Item.Status.S === "DISCHARGED") {
@@ -101,26 +125,8 @@ function monitorFactory(tableName, checkpointTableName, prop) {
             };
 
             const events = await getEvents([], queryParams);
-            // TODO - refactor
             return Promise.all(events.filter(e => !e.Expiration).map(e => {
-                const params = {
-                    Key: {
-                        propinst: e.propinst,
-                        uid: e.uuid, // TODO - double-check the field name. Also in other instance of this code.
-                    },
-                    ExpressionAttributeNames: {
-                        "#TTL": "Expiration"
-                    },
-                    ExpressionAttributeValues: {
-                        ":exp": {
-                            N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
-                        },
-                    },
-                    UpdateExpression: "SET #TTL = :exp",
-                    TableName: tableName,
-
-                };
-                return ddb.updateItem(params).promise();
+                return updateInstanceExpiration(e);
             }));
         }
 
@@ -133,7 +139,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
             for (const qvar of proj) {
                 if (! instance[qvar]) {
-                    console.log(`ERROR: Quantified variable ${qvar} not fount in ${JSON.stringify(instance)}`);
+                    console.log(`ERROR: Quantified variable ${qvar} not found in ${JSON.stringify(instance)}`);
 
                     throw `Instance is missing an assignment to quantified variable ${qvar}.`;
                 }
@@ -162,9 +168,24 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
-            .then(results => results.sort((a, b) => a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp)) // Sort by timestamp, with id being a tie-breaker
+            .then(results => results.sort(eventOrderComparator))
             .then(async results => {
-                let {state, lastProcessedEvent} = proputils.runProperty(prop, results);
+                const stabilityTime = preCallTime - ingestionTimeOut - 1; // Assumes times are in seconds.
+
+                const stablePrefix = results.filter(e => e.timestamp < stabilityTime);
+                const partialTail = results.filter(e => e.timestamp >= stabilityTime);
+
+                let state;
+                let lastProcessedEvent;
+
+                const stableIntermediateState = proputils.runProperty(prop, stablePrefix);
+                state = stableIntermediateState.state;
+                lastProcessedEvent = stableIntermediateState.lastProcessedEvent;
+                const partialExecutionState = proputils.runProperty(prop, partialTail, state);
+                state = partialExecutionState.state;
+                lastProcessedEvent = partialExecutionState.lastProcessedEvent;
+
+                let violationFalseAlarm = false;
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
@@ -172,13 +193,8 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                     // There could have been a data race, where some events were not yet written to the DB when this checker started running.
 
                     // Step 1: Check if, given the violation, there exists an extension (within the eventual consistency windos) that does not lead to a violation.
-                    const stabilityTime = preCallTime - ingestionTimeOut - 1; // Assumes times are in seconds.
-                    const stablePrefix = results.filter(e => e.timestamp < stabilityTime);
-                    const partialTail = results.filter(e => e.timestamp >= stabilityTime);
 
-                    let violationFalseAlarm = false;
-
-                    const canHazExtenstion = hasNonViolatingExtension(property, stablePrefix, partialTail, state.curr);
+                    const canHazExtenstion = proputils.hasNonViolatingExtension(prop, stablePrefix, partialTail, state.curr);
 
                     // Step 2: Read the log and see if there might have been any other events during that time-period.
                     if (canHazExtenstion) {
@@ -193,13 +209,17 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                                 endTime: 'NUMBER_VALUE',
                                 filterPattern: 'STRING_VALUE',
                             };
-                            return cloudwatchlogs.filterLogEvents(params).promise();
+                            return cwl.filterLogEvents(params).promise();
                         }));
 
-                        missingEvents.map(event => processEvent(event))
-                            .filter(event => actuallyMissing(event));
+                        const actualMissing = missingEvents.map(event => processEvent(event)) // TODO
+                            .filter(event => partialTail.every(partialEvent => partialEvent.uuid !== event.uuid));
 
-                        if (checkProperty(property, stablePrefix :: fullTail)) {
+                        const fullTail = partialTail.concat(actualMissing)
+                            .sort(eventOrderComparator);
+
+                        const actualRun = proputils.runProperty(prop, fullTail, stableIntermediateState.state);
+                        if (actualRun.state !== 'FAILURE') {
                             violationFalseAlarm = true;
                         }
 
@@ -239,38 +259,20 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
                 // GC
                 // TODO - GC is actually a little problematic, need to only GC up to stable point. Consider rewriting the entire to checker to split it into two parts, stable check and unstable check.
-                if (state.curr in ['SUCCESS', 'FAILURE']) {
+                if ((partialExecutionState.state in ['FAILURE', 'SUCCESS']) ||
+                    (state.curr === 'FAILURE' &&
+                        !violationFalseAlarm)){
                     // Mark instance as discharged
                     await updateInstanceStatus(true, checkpointTableName);
                 } else {
-                    // Checkpoint the instance
-                    const lastEvent = results[results.length - 1];
-                    await updateInstanceStatus(false, checkpointTableName, state.curr, lastEvent.timestamp.N, lastEvent.id.S);
+                    // Checkpoint the stable part of the instance execution
+                    const lastEvent = partialExecutionState.lastProcessedEvent;
+                    await updateInstanceStatus(false, checkpointTableName, partialExecutionState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
                 }
 
-                // Mark TTL for all instance events (not projections).
-                return Promise.all(results.filter(e => e.propinst.S === instance) // Removes projections
-                    .map(e => {
-                        const params = {
-                            Key: {
-                                propinst: e.propinst,
-                                uuid: e.uuid,
-                            },
-                            ExpressionAttributeNames: {
-                                "#TTL": "Expiration"
-                            },
-                            ExpressionAttributeValues: {
-                                ":exp": {
-                                    N: Math.ceil(Date.now()/1000) + 1, // Could go even safer and add lambda t/o instead of 1s.
-                                },
-                            },
-                            UpdateExpression: "SET #TTL = :exp",
-                            TableName: tableName,
-                        };
-                        return ddb.updateItem(params).promise();
-                    }));
-
-
+                // Mark TTL for all stable instance events (not projections).
+                return Promise.all(stablePrefix.filter(e => e.propinst.S === instance) // Removes projections
+                    .map(e => updateInstanceExpiration(e)));
             })
             .catch((err) => console.log(err));
     }
