@@ -9,6 +9,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "aws-sdk": "^2.362.0"
+    "aws-sdk": "^2.533.0"
+  },
+  "dependencies": {
+    "watchtower-property-utils": "^1.1.0"
   }
 }
