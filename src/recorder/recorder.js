@@ -3,7 +3,7 @@
 const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
 
-function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally) {
+function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext) {
 
     const originalLambdaPath    = `${runLocally?'':'/var/task/'}${originalLambdaFile}`;
     const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
@@ -28,7 +28,14 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
-    return vmExports[originalLambdaHandler];
+    if (updateContext) {
+        return (...params) => {
+            updateContext(originalLambdaHandler);
+            vmExports[originalLambdaHandler](params);
+        }
+    } else {
+        return vmExports[originalLambdaHandler];
+    }
 }
 
 module.exports.createRecordingHandler = createRecordingHandler;
