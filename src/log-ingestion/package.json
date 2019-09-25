@@ -1,6 +1,6 @@
 {
   "name": "watchtower-log-ingestion",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "Serverless function that receives an incoming log stream, and uses it to monitor a security property.",
   "main": "ingestion.js",
   "scripts": {
@@ -15,6 +15,6 @@
     "aws-sdk": "^2.362.0"
   },
   "dependencies": {
-    "watchtower-property-utils": "^1.0.0"
+    "watchtower-property-utils": "^1.1.1"
   }
 }
