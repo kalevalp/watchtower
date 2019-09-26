@@ -31,7 +31,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
     if (updateContext) {
         return (...params) => {
             updateContext(originalLambdaHandler);
-            vmExports[originalLambdaHandler](params);
+            vmExports[originalLambdaHandler](...params);
         }
     } else {
         return vmExports[originalLambdaHandler];
