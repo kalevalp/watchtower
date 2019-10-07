@@ -2,6 +2,37 @@
 
 const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
+const aws = require('aws-sdk');
+
+const kinesis = new aws.Kinesis();
+
+/*
+ * Expected logEvent format:
+ *   {
+ *     name: 'string',
+ *     <param_name>: <param_value>,
+ *     ...
+ *   }
+ */
+function createEventPPublisher(kinesisStreamName) {
+    if (kinesisStreamName) {
+        return (logEvent, lambdaContext) => {
+            const params = {};
+            const data = {};
+            data.logEvent = logEvent;
+            data.timestamp = Date.now();
+            data.invocationID = lambdaContext.awsRequestId;
+            params.StreamName = kinesisStreamName;
+            params.PartitionKey = lambdaContext.functionName;
+            params.Data = JSON.stringify(data);
+            return kinesis.putRecord(params).promise();
+        }
+    } else {
+        return (logEvent) => {
+            console.log(`#####EVENTUPDATE${JSON.stringify(logEvent)}#####`);
+        }
+    }
+}
 
 function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext) {
 
@@ -29,8 +60,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
     if (updateContext) {
-        return (...params) => {
-            updateContext(originalLambdaHandler);
+        return (event, context) => {
+            updateContext(originalLambdaHandler, event, context);
             return vmExports[originalLambdaHandler](...params);
         }
     } else {
@@ -39,3 +70,4 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 }
 
 module.exports.createRecordingHandler = createRecordingHandler;
+module.exports.createEventPPublisher = createEventPPublisher;
