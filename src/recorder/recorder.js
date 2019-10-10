@@ -10,8 +10,10 @@ const kinesis = new aws.Kinesis();
  * Expected logEvent format:
  *   {
  *     name: 'string',
- *     <param_name>: <param_value>,
- *     ...
+ *     params: {
+ *       <param_name>: <param_value>,
+ *       ...
+ *     }
  *   }
  */
 function createEventPPublisher(kinesisStreamName) {
