@@ -16,7 +16,7 @@ const kinesis = new aws.Kinesis();
  *     }
  *   }
  */
-function createEventPPublisher(kinesisStreamName) {
+function createEventPublisher(kinesisStreamName) {
     if (kinesisStreamName) {
         return (logEvent, lambdaContext) => {
             const params = {};
@@ -72,4 +72,4 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 }
 
 module.exports.createRecordingHandler = createRecordingHandler;
-module.exports.createEventPPublisher = createEventPPublisher;
+module.exports.createEventPublisher = createEventPublisher;
