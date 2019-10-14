@@ -18,7 +18,7 @@ const kinesis = new aws.Kinesis();
  */
 function createEventPublisher(kinesisStreamName) {
     if (kinesisStreamName) {
-        return (logEvent, lambdaContext) => {
+        return async (logEvent, lambdaContext) => {
             const params = {};
             const data = {};
             data.logEvent = logEvent;
@@ -27,7 +27,8 @@ function createEventPublisher(kinesisStreamName) {
             params.StreamName = kinesisStreamName;
             params.PartitionKey = lambdaContext.functionName;
             params.Data = JSON.stringify(data);
-            return kinesis.putRecord(params).promise();
+            const res = await kinesis.putRecord(params).promise();
+            return res;
         }
     } else {
         return (logEvent) => {
@@ -61,10 +62,10 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
-    if (updateContext) {
+    if (updateContext) {        
         return (event, context) => {
             updateContext(originalLambdaHandler, event, context);
-            return vmExports[originalLambdaHandler](...params);
+            return vmExports[originalLambdaHandler](event, context);
         }
     } else {
         return vmExports[originalLambdaHandler];
