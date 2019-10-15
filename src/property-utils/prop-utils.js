@@ -12,7 +12,7 @@ function printStateMachine(property) {
 
     for (const fromState in graph) {
         for (const transition of graph[fromState]) {
-            g.addEdge(fromState, transition.to, {label: transition.transition});
+            g.addEdge({id: fromState}, {id: transition.to}, {label: transition.transition});
         }
     }
 
@@ -198,9 +198,9 @@ function runProperty(property, events, fromState) {
 
         // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
         const transition =
-            property.stateMachine[eventType]['ANY'] ?
-                property.stateMachine[eventType]['ANY'] :
-                property.stateMachine[eventType][state.curr];
+              property.stateMachine[eventType]['ANY'] ?
+              property.stateMachine[eventType]['ANY'] :
+              property.stateMachine[eventType][state.curr];
 
         if (transition) {
             // Sanity check that the quantified variable assignment matches the current property instance
@@ -278,7 +278,7 @@ function hasNonViolatingExtension(property, stablePrefix, partialTail) {
             }
             for (state of reachableAfterStep) {
                 const mayReachAnotherState = extensionSearch(state, tailSuffix.slice(1), targetState);
-                 if (mayReachAnotherState)
+                if (mayReachAnotherState)
                     return true;
             }
         }
@@ -293,12 +293,42 @@ module.exports.hasNonViolatingExtension = hasNonViolatingExtension;
 module.exports.runProperty = runProperty;
 
 if (process.argv[2] === '--test') {
+    prop = {
+	name: 'promotional',
+	quantifiedVariables: ['user-id', 'email-title'],
+	projections: [['user-id', 'email-title'], ['user-id']],
+	stateMachine: {
+	    'CONSENT': {
+		params: ['user-id'],
+		'INITIAL' : {
+		    to: 'consented'
+		},
+		'consented': {
+		    to: 'INITIAL'
+		}
+	    },
+	    'SENT_EMAIL': {
+		params: ['user-id', 'email-title'],
+		guard: (email_title) => email_title.match(/^PROMOTION:/), // Starts with 'PROMOTION'
+		'consented' : {
+		    to: 'SUCCESS'
+		},
+		'INITAL': {
+		    to: 'FAILURE'
+		}
+	    },
+	}
+    }
+
+    printStateMachine(prop);
+
+} else if (false) {
     const property = {
         name: 'simpleprop',
         quantifiedVariables: ['image'],
         projections: [['image']], // This property has a single projection, on the single quantified variable in the property.
-                                  // Union over all projections should equal to quantifiedVariables.
-                                  // Also, all projections should be ordered (matching quantifier order).
+        // Union over all projections should equal to quantifiedVariables.
+        // Also, all projections should be ordered (matching quantifier order).
 
         // Determinism is enforced by well-formedness of the JSON object.
         stateMachine: {
