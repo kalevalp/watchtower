@@ -8,33 +8,33 @@ provider:
 
 functions:
   hello:
-    handler: handler-wrapper.hello
+    handler: handler.hello
     events:
       - http:
           path: microbmark
           method: get
-    environment:
-      WATCHTOWER_EVENT_KINESIS_STREAM:
-        Ref: EventsStream
-    role:
-      'Fn::GetAtt': [ EventsStreamWriter, Arn ]
+    # environment:
+    #   WATCHTOWER_EVENT_KINESIS_STREAM:
+    #     Ref: EventsStream
+    # role:
+    #   'Fn::GetAtt': [ EventsStreamWriter, Arn ]
 
 
 
-  ########################################
-  ## Watchtower Functions
-  ##
-  ##
-  ##   Log Ingestion Dummy
-  watchtower-ingestion:
-    handler: dummy-ingestion.handler
-    events:
-    - stream:
-        arn:
-          'Fn::GetAtt': [ EventsStream, Arn ]
-        type: kinesis
-        enabled: true
-        startingPosition: TRIM_HORIZON
+  # ########################################
+  # ## Watchtower Functions
+  # ##
+  # ##
+  # ##   Log Ingestion Dummy
+  # watchtower-ingestion:
+  #   handler: dummy-ingestion.handler
+  #   events:
+  #   - stream:
+  #       arn:
+  #         'Fn::GetAtt': [ EventsStream, Arn ]
+  #       type: kinesis
+  #       enabled: true
+  #       startingPosition: TRIM_HORIZON
   ##   Log Ingestion
   # watchtower-ingestion:
   #   handler: watchtower-log-ingestion.handler
@@ -81,24 +81,24 @@ functions:
   # ########################################
 
 
-resources:
-  Resources:
-    ########################################
-    ## Watchtower Resources
-    ##
-    # ##   Invocation Kinesis Stream
+# resources:
+#   Resources:
+#     ########################################
+#     ## Watchtower Resources
+#     ##
+    # ##   invocation Kinesis Stream
     # InvocationStream:
     #   Type: 'AWS::Kinesis::Stream'
     #   Properties:
     #     Name: Watchtower${self:provider.stage}InvocationStream
     #     ShardCount: 10
-    ##
-    ##   Events Kinesis Stream
-    EventsStream:
-      Type: 'AWS::Kinesis::Stream'
-      Properties:
-        Name: Watchtower${self:provider.stage}EventsStream
-        ShardCount: 10
+    # ##
+    # ##   Events Kinesis Stream
+    # EventsStream:
+    #   Type: 'AWS::Kinesis::Stream'
+    #   Properties:
+    #     Name: Watchtower${self:provider.stage}EventsStream
+    #     ShardCount: 10
     # ##
     # ##   Events DynamoDB Table 
     # EventsTable:
@@ -265,34 +265,34 @@ resources:
     #                  - 'kinesis:PutRecords'
     #                Resource:
     #                  Fn::GetAtt: [InvocationStream, Arn]
-    ## 
-    ## Event Kinesis Stream Writer Role
-    EventsStreamWriter:
-      Type: AWS::IAM::Role
-      Properties:
-        Path: /
-        RoleName: ${self:provider.stage}EventsStreamWriter
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action: sts:AssumeRole
-              Principal:
-                Service: lambda.amazonaws.com
-        ManagedPolicyArns:
-          - arn:aws:iam::aws:policy/AdministratorAccess
-        Policies:
-          - PolicyName: WriteToStream
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                -  Effect: Allow
-                   Action:
-                     - 'kinesis:DescribeStream'
-                     - 'kinesis:PutRecord'
-                     - 'kinesis:PutRecords'
-                   Resource:
-                     Fn::GetAtt: [EventsStream, Arn]
-    ##
-    ## END of Watchtower Resources
-    ########################################
+    # ## 
+    # ## Event Kinesis Stream Writer Role
+    # EventsStreamWriter:
+    #   Type: AWS::IAM::Role
+    #   Properties:
+    #     Path: /
+    #     RoleName: ${self:provider.stage}EventsStreamWriter
+    #     AssumeRolePolicyDocument:
+    #       Version: '2012-10-17'
+    #       Statement:
+    #         - Effect: Allow
+    #           Action: sts:AssumeRole
+    #           Principal:
+    #             Service: lambda.amazonaws.com
+    #     ManagedPolicyArns:
+    #       - arn:aws:iam::aws:policy/AdministratorAccess
+    #     Policies:
+    #       - PolicyName: WriteToStream
+    #         PolicyDocument:
+    #           Version: '2012-10-17'
+    #           Statement:
+    #             -  Effect: Allow
+    #                Action:
+    #                  - 'kinesis:DescribeStream'
+    #                  - 'kinesis:PutRecord'
+    #                  - 'kinesis:PutRecords'
+    #                Resource:
+    #                  Fn::GetAtt: [EventsStream, Arn]
+    # ##
+    # ## END of Watchtower Resources
+    # ########################################

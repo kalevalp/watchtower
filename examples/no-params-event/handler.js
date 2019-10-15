@@ -2,7 +2,7 @@
 const dummy = require('dummy');
 
 module.exports.hello = async (event, context) => {
-    await dummy.operation();
+    dummy.operation();
     return {
         statusCode: 200,
         body: JSON.stringify({
