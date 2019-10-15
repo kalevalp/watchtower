@@ -96,3 +96,7 @@ package-lock.json
 private.yml
 
 build
+
+# Emacs temp files
+*~
+*#
