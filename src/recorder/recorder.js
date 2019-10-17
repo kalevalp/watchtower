@@ -20,7 +20,7 @@ let promisesToWaitFor = [];
  */
 function createEventPublisher(kinesisStreamName) {
     if (kinesisStreamName) {
-        return async (logEvent, lambdaContext) => {
+        return (logEvent, lambdaContext) => {
             const params = {};
             const data = {};
             data.logEvent = logEvent;
@@ -65,13 +65,12 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
     if (updateContext) {
-        return (event, context) => {
-	    promisesToWaitFor = [];
+        return async (event, context) => {
+            promisesToWaitFor = [];
             updateContext(originalLambdaHandler, event, context);
-            const retVal = vmExports[originalLambdaHandler](event, context);
-
-	    return Promise.all(promisesToWaitFor)
-		.then(() => Promise.resolve(retVal));
+            const retVal = await vmExports[originalLambdaHandler](event, context);
+            return Promise.all(promisesToWaitFor)
+                .then(() => Promise.resolve(retVal));
         }
     } else {
         return vmExports[originalLambdaHandler];
