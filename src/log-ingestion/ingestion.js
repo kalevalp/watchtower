@@ -11,6 +11,8 @@ const kinesis = new aws.Kinesis();
 const debug      = process.env.DEBUG_WATCHTOWER;
 const profile    = process.env.PROFILE_WATCHTOWER;
 const streamName = process.env.WATCHTOWER_INVOCATION_STREAM;
+const eventTable = process.env['WATCHTOWER_EVENT_TABLE'];
+const instanceTable = process.env['WATCHTOWER_PROPERTY_INSTANCE_TABLE'];
 
 // const eventUpdateRE = /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
@@ -27,7 +29,7 @@ function getPropTerm(properties) {
     return propTerm;
 }
 
-function createKinesisIngestionHandler (eventsTableName, instanceRegistrationTableName, properties) {
+function createKinesisIngestionHandler (properties) {
     const propTerm = getPropTerm(properties);
 
     return (kinesisEvent, context) => {
@@ -41,11 +43,11 @@ function createKinesisIngestionHandler (eventsTableName, instanceRegistrationTab
                 id: `${record.kinesis.partitionKey}_${record.kinesis.sequenceNumber}`, // Kinesis partitionKey + seqnum combination is unique
             })
         );
-        return handleLogEvents(logEvents, functionTimeout, propTerm);
+        return handleLogEvents(logEvents, functionTimeout, properties, propTerm);
     }
 }
 
-function createLogIngestionHandler (eventsTableName, instanceRegistrationTableName, properties) {
+function createLogIngestionHandler (properties) {
     const propTerm = getPropTerm(properties);
 
     return async function(event, context) {
@@ -74,12 +76,12 @@ function createLogIngestionHandler (eventsTableName, instanceRegistrationTableNa
             };
         });
 
-        return handleLogEvents(logEvents, functionTimeout, propTerm);
+        return handleLogEvents(logEvents, functionTimeout, properties, propTerm);
     }
 
 }
 
-async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
+async function handleLogEvents (logEvents, functionTimeout, properties, propTerm)  {
     const monitorInstancesToTrigger = new Set();
     const nonTerminatingInstancesToTrigger = new Set();
 
@@ -101,7 +103,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
                     id: logEvent.id, // Sort Key
                     type: eventType,
                     params: eventParams,
-                    timestamp: logEvent.timestamp.toString(),
+                    timestamp: logEvent.data.timestamp.toString(),
                     quantified: {},
                     invocation: logEvent.data.invocationID,
                 };
@@ -133,9 +135,9 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
 
                     // TODO - record instance.
 
-                    for (proj of prop.projections) {
+                    for (const proj of prop.projections) {
                         const quantifiedProj = {};
-                        for (qvar of proj) {
+                        for (const qvar of proj) {
                             if (!eventParams[qvar])  throw new Error('Expected param to appear in property!');
 
                             quantifiedProj[qvar] = eventParams[qvar];
@@ -156,19 +158,22 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
         }
     }
 
+    // Collect all async calls
+    const calls = [];
+
     // Phase I - register instances
 
     const batchedRegistrations = [];
 
-    for (let i = 0; i < registrations.length; i += 25) {
-        batchedRegistrations.push(registrations.slice(i, i + 25));
+    for (let i = 0; i < monitorInstancesToRecord.length; i += 25) {
+        batchedRegistrations.push(monitorInstancesToRecord.slice(i, i + 25));
     }
 
     for (const batch of batchedRegistrations) {
         const params = {};
 
         params.RequestItems = {};
-        params.RequestItems[instanceRegistrationTableName] = [];
+        params.RequestItems[instanceTable] = [];
 
 
         for (const item of batch) {
@@ -177,7 +182,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
                     Item: {
                         "projinst": {S: item.proj},
                         "propinst": {S: item.instance},
-                        "expiration": {N: Math.floor(Date.now()/1000) + functionTimeout},
+                        "expiration": {N: (Math.floor(Date.now()/1000) + functionTimeout).toString()},
                     }
                 }
             };
@@ -186,7 +191,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
                 console.log(JSON.stringify(putRequest));
             }
 
-            params.RequestItems[instanceRegistrationTableName].push(putRequest);
+            params.RequestItems[instanceTable].push(putRequest);
         }
 
         if (debug) {
@@ -194,10 +199,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
         }
 
         calls.push(ddb.batchWriteItem(params).promise());
-
     }
-
-
 
     // Phase II - store events
 
@@ -207,14 +209,12 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
         batchedEntries.push(entries.slice(i, i + 25));
     }
 
-    const calls = [];
-
     for (const batch of batchedEntries) {
 
         const params = {};
 
         params.RequestItems = {};
-        params.RequestItems[eventsTableName] = [];
+        params.RequestItems[eventTable] = [];
 
 
         for (const item of batch) {
@@ -232,9 +232,16 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
                 }
             };
 
-            if (item.params.some(x => x !== '')) {
-                putRequest.PutRequest.Item.params = {L: item.params.filter(x => x!=='').map((param) => ({S: param}))};
+            if (Object.keys(item.params).length > 0) {
+                putRequest.PutRequest.Item.params = {M: {}}
+                for (const param in item.params) {
+                    putRequest.PutRequest.Item.params.M[param] = {S: item.params[param]};
+                }
             }
+            //
+            // if (item.params.some(x => x !== '')) {
+            //     putRequest.PutRequest.Item.params = {L: item.params.filter(x => x!=='').map((param) => ({S: param}))};
+            // }
 
             for (const varname in item.quantified) {
                 if (item.quantified.hasOwnProperty(varname)) {
@@ -246,7 +253,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
                 console.log(JSON.stringify(putRequest));
             }
 
-            params.RequestItems[eventsTableName].push(putRequest);
+            params.RequestItems[eventTable].push(putRequest);
         }
 
         if (debug) {
@@ -291,7 +298,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
                 },
                 KeyConditionExpression: "projinst = :v1 and expiration > :v2",
                 ProjectionExpression: "propinst",
-                TableName: instanceRegistrationTableName,
+                TableName: instanceTable,
             };
 
             return ddb.query(params).promise();
@@ -303,7 +310,7 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
         .map(instance => ({
             Data: instance,
             PartitionKey: JSON.stringify(instance).substring(0, 256),
-        })))
+        })));
 
     if (debug) {
         console.log("** Kinesis call:");
@@ -316,4 +323,63 @@ async function handleLogEvents (logEvents, functionTimeout, propTerm)  {
 }
 
 
-module.exports.createIngestionHandler = createLogIngestionHandler;
+module.exports.createIngestionHandler = createKinesisIngestionHandler;
+module.exports.createKinesisIngestionHandler = createKinesisIngestionHandler;
+module.exports.createLogIngestionHandler = createLogIngestionHandler;
+
+
+if (process.argv[2] === "test") {
+    const input = {
+        "Records": [
+            {
+                "kinesis": {
+                    "kinesisSchemaVersion": "1.0",
+                    "partitionKey": "wt-no-params-test-hello",
+                    "sequenceNumber": "49600591983576441710715867822834067253867309126245154914",
+                    "data": "eyJsb2dFdmVudCI6eyJuYW1lIjoiRFVNTVlfRVZFTlRfVFlQRV9BIiwicGFyYW1zIjp7ImV2ZW50aWQiOiJhMDUwM2I0YS0xYWI5LTQ4MTItOTYwMC1mNTYxOTQwMzAxN2UifX0sInRpbWVzdGFtcCI6MTU3MTUxMzQ2MDk3OCwiaW52b2NhdGlvbklEIjoiNmNmZDkxMTUtM2YzZi00N2NjLThhYmQtNDIzM2RjZDhkNDdiIn0=",
+                    "approximateArrivalTimestamp": 1571513461.084
+                },
+                "eventSource": "aws:kinesis",
+                "eventVersion": "1.0",
+                "eventID": "shardId-000000000006:49600591983576441710715867822834067253867309126245154914",
+                "eventName": "aws:kinesis:record",
+                "invokeIdentityArn": "arn:aws:iam::432356059652:role/testEventWriterRole",
+                "awsRegion": "eu-west-1",
+                "eventSourceARN": "arn:aws:kinesis:eu-west-1:432356059652:stream/WatchtowertestEventsStream"
+            }
+        ]
+    };
+
+    const property = {
+        name: 'dummy',
+        quantifiedVariables: ['eventid'],
+        projections: [['eventid']],
+        stateMachine: {
+            'DUMMY_EVENT_TYPE_A': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'intermediate',
+                },
+                'intermediate': {
+                    to: 'SUCCESS',
+                },
+            },
+            'DUMMY_EVENT_TYPE_B': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'SUCCESS',
+                },
+                'intermediate': {
+                    to: 'FAILURE',
+                },
+            },
+        },
+    };
+
+    module.exports = property;
+
+
+    const handler = createKinesisIngestionHandler([property]);
+
+    handler(input, {getRemainingTimeInMillis: () => 10});
+}
