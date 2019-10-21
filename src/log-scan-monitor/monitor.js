@@ -4,13 +4,23 @@ const ses = new aws.SES();
 const cwl = new aws.CloudWatchLogs();
 const proputils = require('watchtower-property-utils');
 
+const debug           = process.env.DEBUG_WATCHTOWER;
+const eventTable      = process.env['WATCHTOWER_EVENT_TABLE'];
+const checkpointTable = process.env['WATCHTOWER_CHECKPOINT_TABLE'];
 
 const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
 
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function getEvents (collectedEvents, params) {
+    if (debug) console.log("DDB call, getEvents: ", JSON.stringify(params));
     return ddb.query(params).promise()
         .then(data => {
+            if (debug) console.log("DDB response, getEvents: ", JSON.stringify(data));
             if (data.LastEvaluatedKey) { // There are additional items in DynamoDB
                 params.ExclusiveStartKey = data.LastEvaluatedKey;
                 return getEvents(collectedEvents.concat(data.Items), params);
@@ -22,6 +32,10 @@ function getEvents (collectedEvents, params) {
 
 function kinesisListenerFactory (handleMonitorInstance) {
     return (event) => {
+        if (debug) {
+            console.log(JSON.stringify(event));
+        }
+
         const monitorInstances = [];
         for (const record of event.Records) {
             let inst = JSON.parse(Buffer.from(record.kinesis.data,'base64').toString());
@@ -33,7 +47,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
     }
 }
 
-function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID) {
+function updateInstanceStatus(instance, isDischarged, tableName, state, timestamp, eventID) {
     const params = {};
     params.ExpressionAttributeNames = { "#ST": "Status" };
 
@@ -60,7 +74,7 @@ function updateInstanceStatus(isDischarged, tableName, state, timestamp, eventID
                 N: timestamp
             },
             ":eventid": {
-                N: eventID
+                S: eventID
             },
         };
         params.UpdateExpression = "SET #ST = :status, #S = :state, #TS = :time, #EID = :eventid"
@@ -77,7 +91,11 @@ function eventOrderComparator(a, b) {
     return a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp;
 }
 
-function monitorFactory(tableName, checkpointTableName, prop) {
+function monitorFactory(prop) {
+    if (debug) {
+        console.log(JSON.stringify(prop));
+    }
+
     return async function(instance, arrivalTimestamp) {
         const ddbCalls = [];
 
@@ -87,8 +105,8 @@ function monitorFactory(tableName, checkpointTableName, prop) {
         // At the end of the run, write checkpoint, and delete processed events.
 
         const params = {
-            Key: {"propinst": {S: instance}},
-            TableName: {checkpointTableName},
+            Key: {"propinst": {S: proputils.getInstance(prop,instance)}},
+            TableName: checkpointTable,
         };
         const checkpoint = await ddb.getItem(params).promise();
 
@@ -107,7 +125,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                     },
                 },
                 UpdateExpression: "SET #TTL = :exp",
-                TableName: tableName,
+                TableName: eventTable,
             };
             return ddb.updateItem(params).promise();
         }
@@ -118,9 +136,9 @@ function monitorFactory(tableName, checkpointTableName, prop) {
             // received some terminating event after the property instance had been discharged. Need to do some GC.
             const eventTimestamp = checkpoint.Item.Timestamp.N;
             const queryParams = {
-                TableName: tableName,
+                TableName: eventTable,
                 KeyConditionExpression: `propinst = :keyval`,
-                ExpressionAttributeValues: {":keyval": {"S": `${instance}`}}, // TODO - Need to properly format the key. Also, go over other uses of instance and make sure they're correct!
+                ExpressionAttributeValues: {":keyval": {"S": `${proputils.getInstance(prop,instance)}`}},
                 // TODO - add a timestamp filter.
             };
 
@@ -149,7 +167,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
             }
 
             const queryRequest = {
-                TableName: tableName,
+                TableName: eventTable,
                 KeyConditionExpression: `propinst = :keyval`,
                 ExpressionAttributeValues: {":keyval": {"S": `${propinstKey}`}},
             };
@@ -170,18 +188,26 @@ function monitorFactory(tableName, checkpointTableName, prop) {
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
             .then(results => results.sort(eventOrderComparator))
             .then(async results => {
+                if (debug) console.log("Events: ", JSON.stringify(results));
+                if (debug) console.log("Events.timestamps: ", JSON.stringify(results.map(e => e.timestamp)));
+
                 const stabilityTime = preCallTime - ingestionTimeOut - 1; // Assumes times are in seconds.
 
-                const stablePrefix = results.filter(e => e.timestamp < stabilityTime);
-                const partialTail = results.filter(e => e.timestamp >= stabilityTime);
+                if (debug) console.log("stabilityTime: ", stabilityTime);
+
+                const stablePrefix = results.filter(e => Number(e.timestamp.N) < stabilityTime);
+                const partialTail = results.filter(e => Number(e.timestamp.N) >= stabilityTime);
+
+                if (debug) console.log("Stable prefix: ", JSON.stringify(stablePrefix));
+                if (debug) console.log("Partial tail: ", JSON.stringify(partialTail));
 
                 let state;
                 let lastProcessedEvent;
 
-                const stableIntermediateState = proputils.runProperty(prop, stablePrefix);
+                const stableIntermediateState = proputils.runProperty(prop, stablePrefix, instance);
                 state = stableIntermediateState.state;
                 lastProcessedEvent = stableIntermediateState.lastProcessedEvent;
-                const partialExecutionState = proputils.runProperty(prop, partialTail, state);
+                const partialExecutionState = proputils.runProperty(prop, partialTail, instance, state);
                 state = partialExecutionState.state;
                 lastProcessedEvent = partialExecutionState.lastProcessedEvent;
 
@@ -231,7 +257,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                         const params = {
                             Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
                             Message: {
-                                Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${instance}` } },
+                                Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}` } },
                                 Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
                             },
                             Source: 'mossie.torp@ethereal.email',
@@ -244,8 +270,7 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                             arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
                         }
 
-                        // TODO: make a more readable print of the instance.
-                        console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${failingInvocation}.${arrivalTimeText}`);
+                        console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.${arrivalTimeText}`);
                     }
                 } else if (state.curr === 'SUCCESS') {
                     // Terminate execution, and mark property so that it is not checked again.
@@ -263,15 +288,15 @@ function monitorFactory(tableName, checkpointTableName, prop) {
                     (state.curr === 'FAILURE' &&
                         !violationFalseAlarm)){
                     // Mark instance as discharged
-                    await updateInstanceStatus(true, checkpointTableName);
+                    await updateInstanceStatus(proputils.getInstance(prop,instance), true, checkpointTable);
                 } else {
                     // Checkpoint the stable part of the instance execution
                     const lastEvent = partialExecutionState.lastProcessedEvent;
-                    await updateInstanceStatus(false, checkpointTableName, partialExecutionState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
+                    await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, partialExecutionState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
                 }
 
                 // Mark TTL for all stable instance events (not projections).
-                return Promise.all(stablePrefix.filter(e => e.propinst.S === instance) // Removes projections
+                return Promise.all(stablePrefix.filter(e => e.propinst.S === proputils.getInstance(prop,instance)) // Removes projections
                     .map(e => updateInstanceExpiration(e)));
             })
             .catch((err) => console.log(err));
@@ -280,3 +305,57 @@ function monitorFactory(tableName, checkpointTableName, prop) {
 
 module.exports.kinesisListenerFactory = kinesisListenerFactory;
 module.exports.monitorFactory = monitorFactory;
+
+
+if (process.argv[2] === "test") {
+    const input = {
+        "Records": [
+            {
+                "kinesis": {
+                    "kinesisSchemaVersion": "1.0",
+                    "partitionKey": "\"{\\\"eventid\\\":\\\"9b1596b2-4b34-46e9-84ba-cd742c5d49c1\\\"}\"",
+                    "sequenceNumber": "49600642134495777700315066552915572419924899399074840626",
+                    "data": "eyJldmVudGlkIjoiOWIxNTk2YjItNGIzNC00NmU5LTg0YmEtY2Q3NDJjNWQ0OWMxIn0=",
+                    "approximateArrivalTimestamp": 1571654144.01
+                },
+                "eventSource": "aws:kinesis",
+                "eventVersion": "1.0",
+                "eventID": "shardId-000000000003:49600642134495777700315066552915572419924899399074840626",
+                "eventName": "aws:kinesis:record",
+                "invokeIdentityArn": "arn:aws:iam::432356059652:role/testEventReaderRole",
+                "awsRegion": "eu-west-1",
+                "eventSourceARN": "arn:aws:kinesis:eu-west-1:432356059652:stream/WatchtowertestInvocationStream"
+            }
+        ]
+    };
+
+    const property = {
+        name: 'dummy',
+        quantifiedVariables: ['eventid'],
+        projections: [['eventid']],
+        stateMachine: {
+            'DUMMY_EVENT_TYPE_A': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'intermediate',
+                },
+                'intermediate': {
+                    to: 'SUCCESS',
+                },
+            },
+            'DUMMY_EVENT_TYPE_B': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'SUCCESS',
+                },
+                'intermediate': {
+                    to: 'FAILURE',
+                },
+            },
+        },
+    };
+
+    const handler = kinesisListenerFactory(monitorFactory(property));
+
+    handler(input);
+}
