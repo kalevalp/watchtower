@@ -1,4 +1,4 @@
-service: wt-no-params
+service: wt-full-flow
 
 provider:
   name: aws
@@ -42,30 +42,33 @@ functions:
       WATCHTOWER_PROPERTY_INSTANCE_TABLE:
         Ref: InstancesTable
       DEBUG_WATCHTOWER: 1
-  # ##
-  # ##   Log Checker
-  # watchtower-monitor:
-  #   handler: watchtower-monitor.handler
-  #   events:
-  #   - stream:
-  #       arn:
-  #         'Fn::GetAtt': [ InvocationStream, Arn ]
-  #       type: kinesis
-  #       enabled: true
-  #       startingPosition: TRIM_HORIZON
-  #   environment:
-  #     WATCHTOWER_EVENT_TABLE:
-  #       Ref: EventsTable
-  #     WATCHTOWER_INVOCATION_STREAM:
-  #       Ref: InvocationStream
-  #     WATCHTOWER_PROPERTY_INSTANCE_TABLE:
-  #       Ref: InstancesTable
-  #     DEBUG_WATCHTOWER: 1
-  #   role:
-  #     'Fn::GetAtt': [ EventReaderRole, Arn ]
-  # ##
-  # ## END of Watchtower Functions
-  # ########################################
+  ##
+  ##   Log Checker
+  watchtower-monitor:
+    handler: watchtower-monitor.handler
+    events:
+    - stream:
+        arn:
+          'Fn::GetAtt': [ InvocationStream, Arn ]
+        type: kinesis
+        enabled: true
+        startingPosition: TRIM_HORIZON
+    environment:
+      WATCHTOWER_EVENT_TABLE:
+        Ref: EventsTable
+      WATCHTOWER_INVOCATION_STREAM:
+        Ref: InvocationStream
+      WATCHTOWER_PROPERTY_INSTANCE_TABLE:
+        Ref: InstancesTable
+      WATCHTOWER_CHECKPOINT_TABLE:
+        Ref: CheckpointsTable
+      DEBUG_WATCHTOWER: 1
+      PROCESSING_LAMBDA_TIMEOUT: 6
+    role:
+      'Fn::GetAtt': [ EventReaderRole, Arn ]
+   ##
+   ## END of Watchtower Functions
+   ########################################
 
 
 resources:
@@ -103,6 +106,9 @@ resources:
           KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: Watchtower-${self:provider.stage}-MonitoredEvents
+        TimeToLiveSpecification:
+          AttributeName: expiration
+          Enabled: true
     ##
     ##   Property Instances DynamoDB Table
     InstancesTable:
@@ -111,15 +117,31 @@ resources:
         AttributeDefinitions:
         - AttributeName: propinst
           AttributeType: S
-        - AttributeName: id
+        - AttributeName: projinst
           AttributeType: S
         KeySchema:
         - AttributeName: propinst
           KeyType: HASH
-        - AttributeName: id
+        - AttributeName: projinst
           KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: Watchtower-${self:provider.stage}-PropertyInstances
+        TimeToLiveSpecification:
+          AttributeName: expiration
+          Enabled: true
+    ##
+    ##   Instances Checkpoints DynamoDB Table
+    CheckpointsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: propinst
+          AttributeType: S
+        KeySchema:
+        - AttributeName: propinst
+          KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: Watchtower-${self:provider.stage}-InstanceCheckpoints
     ##
     ##   Event-Writer IAM Role
     EventWriterRole:
@@ -146,34 +168,34 @@ resources:
                  - 'dynamodb:BatchWriteItem'
                  Resource:
                    Fn::GetAtt: [EventsTable, Arn]
-    # ##
-    # ## Event-Reader IAM Role
-    # EventReaderRole:
-    #   Type: AWS::IAM::Role
-    #   Properties:
-    #     Path: /
-    #     RoleName: ${self:provider.stage}EventReaderRole
-    #     AssumeRolePolicyDocument:
-    #       Version: '2012-10-17'
-    #       Statement:
-    #       - Effect: Allow
-    #         Action: sts:AssumeRole
-    #         Principal:
-    #           Service: lambda.amazonaws.com
-    #     ManagedPolicyArns:
-    #     - arn:aws:iam::aws:policy/AdministratorAccess
-    #     Policies:
-    #       - PolicyName: QueryEventTable
-    #         PolicyDocument:
-    #           Version: '2012-10-17'
-    #           Statement:
-    #           -  Effect: Allow
-    #              Action:
-    #              - 'dynamodb:Query'
-    #              Resource:
-    #                Fn::GetAtt: [EventsTable, Arn]
     ##
-    ##   PropInstance-Writer IAM Role
+    ## Event-Reader IAM Role
+    EventReaderRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:provider.stage}EventReaderRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        Policies:
+          - PolicyName: QueryEventTable
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              -  Effect: Allow
+                 Action:
+                 - 'dynamodb:Query'
+                 Resource:
+                   Fn::GetAtt: [EventsTable, Arn]
+    #
+    #   PropInstance-Writer IAM Role
     PropInstanceWriterRole:
       Type: AWS::IAM::Role
       Properties:
