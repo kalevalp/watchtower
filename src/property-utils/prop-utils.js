@@ -166,15 +166,15 @@ function getTerminatingTransitions(property) {
 
 // Kind of ignores guarded transitions at the moment.
 function getReachabilityMap(property) {
-    const states = getReachableStates(property);
+    const states = getReachableStates(propToGraph(property));
     const reachabilityMap = {};
 
-    for (state of states) {
+    for (const state of states) {
         const stack = [state];
         const reachable = [];
         while (stack.length !== 0){
-            curr = stack.pop();
-            for (transition of property.stateMachine) {
+            const curr = stack.pop();
+            for (const transition of Object.values(property.stateMachine)) {
                 if (transition[curr] &&
                     !reachable.includes(transition[curr].to)) {
                     reachable.push(transition[curr].to);
@@ -189,7 +189,19 @@ function getReachabilityMap(property) {
 
 }
 
-function runProperty(property, events, fromState) {
+function convertParams(params) {
+    const result = {};
+    for (const param in params.M) {
+        console.log("converting", param);
+        if (params.M[param].S) result[param] = params.M[param].S;
+        else if (params.M[param].N) result[param] = Number(params.M[param].N);
+        else
+            throw "Not implemented yet";
+    }
+    return result;
+}
+
+function runProperty(property, events, instance, fromState) {
     let state;
     if (!fromState) {
         state = {
@@ -204,7 +216,8 @@ function runProperty(property, events, fromState) {
 
     for (const e of events) {
         const eventType = e.type.S;
-        const eventParams = e.params ? e.params.L.map(param => param.S) : [];
+        const eventParamsDict = convertParams(e.params);
+
         // const eventInvocationUuid = e.invocation.S;
 
         // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
@@ -220,7 +233,7 @@ function runProperty(property, events, fromState) {
 
                 if (property.quantifiedVariables.includes(varname)) { // This variable is used to determine the property instance
 
-                    if (eventParams[i] !== instance[varname]) {
+                    if (eventParamsDict[varname] !== instance[varname]) {
                         throw "ERROR: Encountered an event whose parameters don't match the instance.";
                     }
                 }
@@ -230,7 +243,7 @@ function runProperty(property, events, fromState) {
             let toState;
 
             if (transition['GUARDED_TRANSITION']) {
-                const guardValuation = transition['GUARDED_TRANSITION'].guard(...eventParams);
+                const guardValuation = transition['GUARDED_TRANSITION'].guard(...Object.values(eventParamsDict));
 
                 if (guardValuation) {
                     update = transition['GUARDED_TRANSITION'].onGuardHolds.update;
@@ -245,7 +258,7 @@ function runProperty(property, events, fromState) {
                 toState = transition.to;
             }
             if (update)
-                update(state.compound, ...eventParams);
+                update(state.compound, ...Object.values(eventParamsDict));
 
             state.curr = toState;
 
@@ -278,9 +291,11 @@ function hasNonViolatingExtension(property, stablePrefix, partialTail) {
             const reachable = reachabilityMap[fromState];
             const reachableAfterStep = [];
             for (state of reachable) {
-                const toState = property.stateMachine[event.type.S][state].to; // TODO - make sure type is correct
-                if (!reachableAfterStep.contains(toState))
-                    reachableAfterStep.push(toState);
+                if (property.stateMachine[event.type.S] && property.stateMachine[event.type.S][state]) {
+                    const toState = property.stateMachine[event.type.S][state].to; // TODO - make sure type is correct
+                    if (!reachableAfterStep.includes(toState))
+                        reachableAfterStep.push(toState);
+                }
             }
             if (tailSuffix.length === 1) { // Final transition
                 if (!reachableAfterStep.every(state => state === 'FAILURE')) {
@@ -305,6 +320,99 @@ module.exports.runProperty = runProperty;
 module.exports.getInstance = getInstance;
 
 if (process.argv[2] === '--test') {
+    const property = {
+        name: 'dummy',
+        quantifiedVariables: ['eventid'],
+        projections: [['eventid']],
+        stateMachine: {
+            'DUMMY_EVENT_TYPE_A': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'intermediate',
+                },
+                'intermediate': {
+                    to: 'SUCCESS',
+                },
+            },
+            'DUMMY_EVENT_TYPE_B': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'SUCCESS',
+                },
+                'intermediate': {
+                    to: 'FAILURE',
+                },
+            },
+        },
+    };
+
+    console.log(getReachabilityMap(property));
+} else if (false) {
+    const events = [
+        {
+            "eventid": {
+                "S": "58d28801-4e21-449b-879b-daa826fc94c8"
+            },
+            "invocation": {
+                "S": "60049d4f-2218-4ae7-9217-89fecb2fe992"
+            },
+            "params": {
+                "M": {
+                    "eventid": {
+                        "S": "58d28801-4e21-449b-879b-daa826fc94c8"
+                    }
+                }
+            },
+            "timestamp": {
+                "N": "1571684157549"
+            },
+            "id": {
+                "S": "wt-full-flow-test-hello_49600642134451176209918005304233992157266241008540057618"
+            },
+            "propinst": {
+                "S": "dummyeventid58d28801-4e21-449b-879b-daa826fc94c8"
+            },
+            "type": {
+                "S": "DUMMY_EVENT_TYPE_A"
+            }
+        }
+    ];
+
+    const property = {
+        name: 'dummy',
+        quantifiedVariables: ['eventid'],
+        projections: [['eventid']],
+        stateMachine: {
+            'DUMMY_EVENT_TYPE_A': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'intermediate',
+                },
+                'intermediate': {
+                    to: 'SUCCESS',
+                },
+            },
+            'DUMMY_EVENT_TYPE_B': {
+                params: ['eventid'],
+                'INITIAL': {
+                    to: 'SUCCESS',
+                },
+                'intermediate': {
+                    to: 'FAILURE',
+                },
+            },
+        },
+    };
+
+    let state;
+    let lastProcessedEvent;
+
+    const stableIntermediateState = runProperty(property, []);
+    state = stableIntermediateState.state;
+    lastProcessedEvent = stableIntermediateState.lastProcessedEvent;
+    const partialExecutionState = runProperty(property, events, state);
+
+} else if (false) {
     prop = {
 	name: 'promotional',
 	quantifiedVariables: ['user-id', 'email-title'],
@@ -383,5 +491,6 @@ if (process.argv[2] === '--test') {
 
     console.log(getTerminatingTransitions(property));
 }
+
 
 
