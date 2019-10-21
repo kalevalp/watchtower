@@ -1,6 +1,17 @@
 const graphviz = require('graphviz');
 
 
+function getInstance(prop, eventParams) {
+    let propinstKey = prop.name;
+    for (const qvar of prop.quantifiedVariables) {
+        if (eventParams[qvar]) {
+            propinstKey += qvar;
+            propinstKey += eventParams[qvar];
+        }
+    }
+    return propinstKey;
+}
+
 function setsEqual (a, b) {
     return a.size === b.size && [...a].every(value => b.has(value));
 }
@@ -291,6 +302,7 @@ function hasNonViolatingExtension(property, stablePrefix, partialTail) {
 module.exports.getTerminatingTransitions = getTerminatingTransitions;
 module.exports.hasNonViolatingExtension = hasNonViolatingExtension;
 module.exports.runProperty = runProperty;
+module.exports.getInstance = getInstance;
 
 if (process.argv[2] === '--test') {
     prop = {
