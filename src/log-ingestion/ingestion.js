@@ -108,15 +108,12 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     invocation: logEvent.data.invocationID,
                 };
 
-                let propinstKey = prop.name;
                 for (const qvar of prop.quantifiedVariables) {
                     if (eventParams[qvar]) {
-                        propinstKey += qvar;
-                        propinstKey += eventParams[qvar];
                         entry.quantified[qvar] = eventParams[qvar];
                     }
                 }
-                entry.propinst = propinstKey; // Partition Key
+                entry.propinst = proputils.getInstance(prop, eventParams); // Partition Key
 
                 entries.push(entry);
 
@@ -133,8 +130,6 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     //       TTL for property instances is Tlambdamax+epsilon. After that point no new out-of-order non-terminating events can arrive.
                     //       The timestamp of the non-terminating event should be earlier than that of the terminating event that initiated the instance instantiation.
 
-                    // TODO - record instance.
-
                     for (const proj of prop.projections) {
                         const quantifiedProj = {};
                         for (const qvar of proj) {
@@ -149,9 +144,6 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     // Add an instance check notification
                     monitorInstancesToTrigger.add(JSON.stringify(entry.quantified));
                 } else { // Non-terminating transition
-
-                    // TODO - check if the current event is relevant to a live property instance.
-                    //        if it is, rerun that instance.
                     nonTerminatingInstancesToTrigger.add(JSON.stringify(entry.quantified));
                 }
             }
@@ -225,8 +217,6 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                         "id": {S: item.id},
                         "type": {S: item.type},
                         "timestamp": {N: item.timestamp},
-                        "logGroup": {S: item.logGroup},
-                        "logStream": {S: item.logStream},
                         "invocation": {S: item.invocation},
                     }
                 }
@@ -238,10 +228,6 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     putRequest.PutRequest.Item.params.M[param] = {S: item.params[param]};
                 }
             }
-            //
-            // if (item.params.some(x => x !== '')) {
-            //     putRequest.PutRequest.Item.params = {L: item.params.filter(x => x!=='').map((param) => ({S: param}))};
-            // }
 
             for (const varname in item.quantified) {
                 if (item.quantified.hasOwnProperty(varname)) {
@@ -284,16 +270,15 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
     }
 
     // Phase IV - trigger instances by non-terminating events
-    // TODO - some projections may trigger multiple instances. Needs to be taken into account.
     const resp = await Promise.all(
         Array.from(nonTerminatingInstancesToTrigger).map(proj => {
             const params = {
                 ExpressionAttributeValues: {
                     ":v1": {
-                        S: "No One You Know"
+                        S: JSON.stringify(proj),
                     },
                     ":v2": {
-                        N: Math.floor(Date.now()/1000)
+                        N: (Math.floor(Date.now()/1000)).toString(),
                     },
                 },
                 KeyConditionExpression: "projinst = :v1 and expiration > :v2",
