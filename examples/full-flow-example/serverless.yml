@@ -66,9 +66,51 @@ functions:
       PROCESSING_LAMBDA_TIMEOUT: 6
     role:
       'Fn::GetAtt': [ EventReaderRole, Arn ]
-   ##
-   ## END of Watchtower Functions
-   ########################################
+  ##
+  ## END of Watchtower Functions
+  ########################################
+
+  ##########################################
+  ## Watchtower Checker State Machine
+  ##
+  stepFunctions:
+    stateMachines:
+      checker:
+        name: wtCheckerMachine
+        definition:
+          Comment: "A Hello World example of the Amazon States Language using an AWS Lambda Function"
+          StartAt: DetermineFlow
+          States:
+            DetermineFlow:
+              Type: Choice
+              Choices:
+                - Variable: $.checkerFlow
+                  StringEquals: "runTwice"
+                  Next: FirstCheckerRun
+                - Variable: $.checkerFlow
+                  StringEquals: "runOnce"
+                  Next: WaitToStable
+              Default: WaitToStable
+            FirstCheckerRun:
+              Type: Task
+              Comment: "First execution of the checker. May result in false positives and false negatives."
+              Resource:
+                Fn::GetAtt: [watchtower-monitor, Arn]
+              Next: WaitToStable
+            WaitToStable:
+              Type : Wait
+              SecondsPath : $.stabilityDelay
+              Next: StableCheckerRun
+            StableCheckerRun:
+              Type: Task
+              Comment: "Second/Stable execution of the checker."
+              Resource:
+                Fn::GetAtt: [watchtower-monitor, Arn]
+              End: true
+  ##
+  ## End of Watchtower Checker State Machine
+  ##########################################
+
 
 
 resources:
