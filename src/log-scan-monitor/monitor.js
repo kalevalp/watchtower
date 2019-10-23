@@ -43,7 +43,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
             monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp));
         }
 
-        return Promise.all(monitorInstances)
+        return Promise.all(monitorInstances).then(() => event);
     }
 }
 
