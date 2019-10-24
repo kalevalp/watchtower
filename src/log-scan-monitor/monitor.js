@@ -11,7 +11,6 @@ const checkpointTable = process.env['WATCHTOWER_CHECKPOINT_TABLE'];
 const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
 
-
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -36,12 +35,20 @@ function kinesisListenerFactory (handleMonitorInstance) {
             console.log(JSON.stringify(event));
         }
 
+	const invokedInstances = [];
+
         const monitorInstances = [];
         for (const record of event.Records) {
-            let inst = JSON.parse(Buffer.from(record.kinesis.data,'base64').toString());
-
-            monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase));
+	    const instStr = Buffer.from(record.kinesis.data,'base64').toString();
+	    if (!invokedInstances.includes(instStr)){
+		const inst = JSON.parse(instStr);
+		monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase));
+	    } else {
+		if (debug) console.log("Invocation with multiple instances. Instance:", instStr);
+	    }
         }
+
+	if (debug) console.log("Monitored instances: ", JSON.stringify(event.Records.map(record => Buffer.from(record.kinesis.data,'base64').toString())));
 
         return Promise.all(monitorInstances).then(() => event);
     }
@@ -139,12 +146,11 @@ function monitorFactory(prop) {
             checkpoint.Item.Status &&
             checkpoint.Item.Status.S === "DISCHARGED") {
             // received some terminating event after the property instance had been discharged. Need to do some GC.
-            const eventTimestamp = checkpoint.Item.Timestamp.N;
             const queryParams = {
                 TableName: eventTable,
                 KeyConditionExpression: `propinst = :keyval`,
                 ExpressionAttributeValues: {":keyval": {"S": `${proputils.getInstance(prop,instance)}`}},
-                // TODO - add a timestamp filter.
+		FilterExpression: `attribute_not_exists(expiration)`
             };
 
             const events = await getEvents([], queryParams);
@@ -214,7 +220,7 @@ function monitorFactory(prop) {
                 lastProcessedEvent = stableIntermediateState.lastProcessedEvent;
 
 		// Only run the unstable part in the initial run of the checker.
-		if (phase === 'initialPhase') {
+		if (phase === 'initialPhase' && partialTail.length > 0) {
                     const partialExecutionState = proputils.runProperty(prop, partialTail, instance, state);
                     state = partialExecutionState.state;
                     lastProcessedEvent = partialExecutionState.lastProcessedEvent;
@@ -222,6 +228,7 @@ function monitorFactory(prop) {
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
+
 		    /* Optimizing reporting.
 		     * If the violation is in the partial execution, and we're in the initial call, check if there can be a
 		     * non violating extension. If there cannot, then this is a real violation.
@@ -229,6 +236,8 @@ function monitorFactory(prop) {
                     // Check if, given the violation, there exists an extension (within the eventual consistency window) that does not lead to a violation.
                     const canHazExtenstion = proputils.hasNonViolatingExtension(prop, stablePrefix, partialTail, instance);
 		    const shouldCaveat = canHazExtenstion && phase === 'initialPhase';
+
+		    if (profile) console.log(`@@@@WT_PROF:${shouldCaveat ? 'POTENTIAL' : ''} VIOLATION REPORT DELAY: ${Date.now()-Number(lastProcessedEvent.timestamp.N)}(ms)`);
 
                     // Report to the user that the property had been violated.
 		    const caveat = '\n\nNote that due to eventual consistency concerns, this violation may be spurious. \nWe will recheck the property as soon as the system has stabilized, and will report a definitive answer shortly.';
@@ -247,7 +256,7 @@ function monitorFactory(prop) {
                     if (profile) {
                         arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
                     }
-                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.${arrivalTimeText}`);
+                    console.log(`Property ${prop.name} was${shouldCaveat ? ' POTENTIALLY' : ''} violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.${arrivalTimeText}`);
                 } else if (state.curr === 'SUCCESS') {
                     console.log(`Property ${prop.name} holds for property instance ${JSON.stringify(instance)}`);
                 } else {
@@ -256,6 +265,7 @@ function monitorFactory(prop) {
 
                 // GC
                 if (['FAILURE', 'SUCCESS'].includes(stableIntermediateState.state.curr)){
+		    if (debug) console.log("Discharged property in the stable part. stableIntermediateState: ", JSON.stringify(stableIntermediateState));
                     // Mark instance as discharged
                     await updateInstanceStatus(proputils.getInstance(prop,instance), true, checkpointTable);
                 } else {
