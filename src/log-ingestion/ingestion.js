@@ -85,7 +85,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
     const monitorInstancesToTrigger = new Set();
     const nonTerminatingInstancesToTrigger = new Set();
 
-    const monitorInstancesToRecord = [];
+    const monitorInstancesToRecord = new Set();
     const entries = [];
 
     for (const logEvent of logEvents) {
@@ -138,7 +138,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                             quantifiedProj[qvar] = eventParams[qvar];
                         }
 
-                        monitorInstancesToRecord.push({'proj': JSON.stringify(quantifiedProj), 'instance': JSON.stringify(entry.quantified)});
+                        monitorInstancesToRecord.add({'proj': JSON.stringify(quantifiedProj), 'instance': JSON.stringify(entry.quantified)});
                     }
 
                     // Add an instance check notification
