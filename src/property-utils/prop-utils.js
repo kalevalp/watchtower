@@ -209,7 +209,10 @@ function runProperty(property, events, instance, fromState) {
             compound: property.getNewCompoundState ? property.getNewCompoundState() : {},
         };
     } else {
-        state = fromState;
+        state = {
+	    curr: fromState.curr,
+	    compound: JSON.parse(JSON.stringify(fromState.compound)),
+	}
     }
 
     let lastProcessedEvent;
