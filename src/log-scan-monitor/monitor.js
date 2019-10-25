@@ -34,6 +34,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
         if (debug) {
             console.log(JSON.stringify(event));
         }
+        let checkerFunctionInvokeTime = Date.now();
 
         const invokedInstances = [];
 
@@ -42,7 +43,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
             const instStr = Buffer.from(record.kinesis.data,'base64').toString();
             if (!invokedInstances.includes(instStr)){
                 const inst = JSON.parse(instStr);
-                monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase));
+                monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase, checkerFunctionInvokeTime));
                 invokedInstances.push(instStr);
             } else {
                 if (debug) console.log("Invocation with multiple instances. Instance:", instStr);
@@ -107,7 +108,7 @@ function monitorFactory(prop) {
         console.log(JSON.stringify(prop));
     }
 
-    return async function(instance, arrivalTimestamp, phase) {
+    return async function(instance, instanceTriggerKinesisTime, phase, checkerFunctionInvokeTime) {
         if (debug) console.log("Running checker, phase: ", phase);
 
         const ddbCalls = [];
@@ -251,7 +252,23 @@ function monitorFactory(prop) {
 
                     definitivelyDischarged = !shouldCaveat;
 
-                    if (profile) console.log(`@@@@WT_PROF:${shouldCaveat ? 'POTENTIAL' : ''} VIOLATION REPORT DELAY: ${Date.now()-Number(lastProcessedEvent.timestamp.N)}(ms)`);
+                    if (profile) { 
+                        const profileReport = {
+                            instance,
+                            phase,
+                            eventOccuredTimestamp: Number(lastProcessedEvent.timestamp.N),
+                            eventKinesisArrivedTimestamp: Number(lastProcessedEvent.approximateKinesisArrivalTime.N),
+                            ingestionFunctionStartTime: Number(lastProcessedEvent.ingestionStartTime.N),
+                            ddbWriteTime: Number(lastProcessedEvent.ddbWriteTime.N),
+                            instanceTriggerKinesisTime: instanceTriggerKinesisTime*1000,
+                            checkerFunctionInvokeTime,
+                            violationDetectionTime : Date.now(),
+                        }
+
+                        console.log(`@@@@WT_PROF: FULL REPORT ---${JSON.stringify(profileReport)}---`);
+
+                        console.log(`@@@@WT_PROF:${shouldCaveat ? 'POTENTIAL' : ''} VIOLATION REPORT DELAY: ${Date.now()-Number(lastProcessedEvent.timestamp.N)}(ms)`);
+                    }
 
                     // Report to the user that the property had been violated.
                     const caveat = '\n\nNote that due to eventual consistency concerns, this violation may be spurious. \nWe will recheck the property as soon as the system has stabilized, and will report a definitive answer shortly.';
@@ -265,12 +282,7 @@ function monitorFactory(prop) {
                     // };
                     // await ses.sendEmail(params).promise();
 
-                    let arrivalTimeText = '';
-
-                    if (profile) {
-                        arrivalTimeText = ` Kinesis arrival timestamp @@${arrivalTimestamp}@@.`
-                    }
-                    console.log(`Property ${prop.name} was${shouldCaveat ? ' POTENTIALLY' : ''} violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.${arrivalTimeText}`);
+                    console.log(`Property ${prop.name} was${shouldCaveat ? ' POTENTIALLY' : ''} violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.`);
                 } else if (state.curr === 'SUCCESS') {
                     console.log(`Property ${prop.name} holds for property instance ${JSON.stringify(instance)}`);
                 } else {

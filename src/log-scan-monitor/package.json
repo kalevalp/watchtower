@@ -1,6 +1,6 @@
 {
   "name": "watchtower-monitor",
-  "version": "1.5.15",
+  "version": "1.6.2",
   "description": "",
   "main": "monitor.js",
   "scripts": {
