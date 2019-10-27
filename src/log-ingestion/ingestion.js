@@ -13,6 +13,7 @@ const profile    = process.env.PROFILE_WATCHTOWER;
 const streamName = process.env.WATCHTOWER_INVOCATION_STREAM;
 const eventTable = process.env['WATCHTOWER_EVENT_TABLE'];
 const instanceTable = process.env['WATCHTOWER_PROPERTY_INSTANCE_TABLE'];
+const runOnNonTerm = process.env.WATCHTOWER_RUN_ON_NON_TERM;
 
 // const eventUpdateRE = /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\t#####EVENTUPDATE\[(([A-Za-z0-9\-_]+)\(([A-Za-z0-9\-_,.:/]*)\))]#####\n$/;
 
@@ -269,39 +270,37 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
             throw "FATAL ERROR: Too many invocation requests!";
     }
 
-    // Phase IV - trigger instances by non-terminating events
-    const resp = await Promise.all(
-        Array.from(nonTerminatingInstancesToTrigger).map(proj => {
-            const params = {
-                ExpressionAttributeValues: {
-                    ":v1": {
-                        S: JSON.stringify(proj),
+    if (runOnNonTerm) {
+        // Phase IV - trigger instances by non-terminating events
+        const resp = await Promise.all(
+            Array.from(nonTerminatingInstancesToTrigger).map(proj => {
+                const params = {
+                    ExpressionAttributeValues: {
+                        ":v1": {
+                            S: JSON.stringify(proj),
+                        },
+                        ":v2": {
+                            N: (Math.floor(Date.now()/1000)).toString(),
+                        },
                     },
-                    ":v2": {
-                        N: (Math.floor(Date.now()/1000)).toString(),
-                    },
-                },
-                KeyConditionExpression: "projinst = :v1 and expiration > :v2",
-                ProjectionExpression: "propinst",
-                TableName: instanceTable,
-            };
-
-            return ddb.query(params).promise();
-        })
-    );
-
-    params.Records.concat(Array.from(new Set([].concat(...resp.map(data => data.Items))
-        .map(item => item.propinst)))
-        .map(instance => ({
-            Data: instance,
-            PartitionKey: JSON.stringify(instance).substring(0, 256),
-        })));
-
-    if (debug) {
-        console.log("** Kinesis call:");
-        console.log(params);
-        console.log(monitorInstancesToTrigger);
+                    KeyConditionExpression: "projinst = :v1 and expiration > :v2",
+                    ProjectionExpression: "propinst",
+                    TableName: instanceTable,
+                };
+                return ddb.query(params).promise();
+            })
+            );
+        params.Records.concat(Array.from(new Set([].concat(...resp.map(data => data.Items))
+            .map(item => item.propinst)))
+            .map(instance => ({
+                Data: instance,
+                PartitionKey: JSON.stringify(instance).substring(0, 256),
+            })));
     }
+
+    if (debug) console.log("** Kinesis call:", JSON.stringify(params));
+    if (debug) console.log("** Monitor Instances To Trigger:", JSON.stringify(monitorInstancesToTrigger));
+        
     return Promise.all(calls)
         .then(() => params.Records.length > 0 ? kinesis.putRecords(params).promise() : undefined);
 
