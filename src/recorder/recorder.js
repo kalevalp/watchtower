@@ -27,7 +27,8 @@ function createEventPublisher(kinesisStreamName) {
             data.timestamp = Date.now();
             data.invocationID = lambdaContext.awsRequestId;
             params.StreamName = kinesisStreamName;
-            params.PartitionKey = lambdaContext.functionName;
+            // params.PartitionKey = lambdaContext.functionName;
+            params.PartitionKey = lambdaContext.awsRequestId; // Preserves invocation locality, as well as scalability when app has a small number of function types.
             params.Data = JSON.stringify(data);
 
             promisesToWaitFor.push(kinesis.putRecord(params).promise());
