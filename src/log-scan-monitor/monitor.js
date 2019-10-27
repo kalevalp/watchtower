@@ -43,7 +43,8 @@ function kinesisListenerFactory (handleMonitorInstance) {
             const instStr = Buffer.from(record.kinesis.data,'base64').toString();
             if (!invokedInstances.includes(instStr)){
                 const inst = JSON.parse(instStr);
-                monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase, checkerFunctionInvokeTime));
+		const triggerStartTime = event.triggerStartTime ? event.triggerStartTime : checkerFunctionInvokeTime;
+                monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase, checkerFunctionInvokeTime, triggerStartTime));
                 invokedInstances.push(instStr);
             } else {
                 if (debug) console.log("Invocation with multiple instances. Instance:", instStr);
@@ -108,7 +109,7 @@ function monitorFactory(prop) {
         console.log(JSON.stringify(prop));
     }
 
-    return async function(instance, instanceTriggerKinesisTime, phase, checkerFunctionInvokeTime) {
+    return async function(instance, instanceTriggerKinesisTime, phase, checkerFunctionInvokeTime, triggerStartTime) {
         if (debug) console.log("Running checker, phase: ", phase);
 
         const ddbCalls = [];
@@ -261,6 +262,7 @@ function monitorFactory(prop) {
                             ingestionFunctionStartTime: Number(lastProcessedEvent.ingestionStartTime.N),
                             ddbWriteTime: Number(lastProcessedEvent.ddbWriteTime.N),
                             instanceTriggerKinesisTime: instanceTriggerKinesisTime*1000,
+			    triggerStartTime,
                             checkerFunctionInvokeTime,
                             violationDetectionTime : Date.now(),
                         }
