@@ -22,7 +22,7 @@ module.exports.hello = async (event, context) => {
     } else if (eventType==='C') {
         message = 'Scenario: Operation A and then Operation B.';
         dummy.operationA(opid);
-        await sleep(5000);
+        await sleep(500);
         dummy.operationB(opid);
     } else {
         message = "Unexpected operation command";

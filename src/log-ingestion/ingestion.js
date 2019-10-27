@@ -34,15 +34,27 @@ function createKinesisIngestionHandler (properties) {
     const propTerm = getPropTerm(properties);
 
     return (kinesisEvent, context) => {
+        let functionTime;
+        if (profile) functionTime = Date.now();
+        if (debug) console.log("Started ingestion handler at time:", functionTime);
+
         const functionTimeout = Math.ceil(context.getRemainingTimeInMillis()/1000);
         if (debug) console.log(JSON.stringify(kinesisEvent));
 
         let logEvents = kinesisEvent.Records.map(
-            record => ({
-                data: JSON.parse(Buffer.from(record.kinesis.data,'base64').toString()),
-                approximateKinesisArrivalTime: record.kinesis.approximateArrivalTimestamp,
-                id: `${record.kinesis.partitionKey}_${record.kinesis.sequenceNumber}`, // Kinesis partitionKey + seqnum combination is unique
-            })
+            record => {
+                const le = {
+                    data: JSON.parse(Buffer.from(record.kinesis.data,'base64').toString()),
+                    id: `${record.kinesis.partitionKey}_${record.kinesis.sequenceNumber}`, // Kinesis partitionKey + seqnum combination is unique
+                }
+
+                if (profile) le.ingestionStartTime = functionTime.toString();
+                if (profile) le.approximateKinesisArrivalTime = (record.kinesis.approximateArrivalTimestamp*1000).toString();
+
+                if (debug) console.log("Ingesting kinesis event: ", le);
+
+                return le;
+            }
         );
         return handleLogEvents(logEvents, functionTimeout, properties, propTerm);
     }
@@ -86,7 +98,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
     const monitorInstancesToTrigger = new Set();
     const nonTerminatingInstancesToTrigger = new Set();
 
-    const monitorInstancesToRecord = [];
+    const monitorInstancesToRecord = new Set();
     const entries = [];
 
     for (const logEvent of logEvents) {
@@ -108,6 +120,9 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     quantified: {},
                     invocation: logEvent.data.invocationID,
                 };
+
+                if (profile) entry.ingestionStartTime = logEvent.ingestionStartTime;
+                if (profile) entry.approximateKinesisArrivalTime = logEvent.approximateKinesisArrivalTime;
 
                 for (const qvar of prop.quantifiedVariables) {
                     if (eventParams[qvar]) {
@@ -139,7 +154,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                             quantifiedProj[qvar] = eventParams[qvar];
                         }
 
-                        monitorInstancesToRecord.push({'proj': JSON.stringify(quantifiedProj), 'instance': JSON.stringify(entry.quantified)});
+                        monitorInstancesToRecord.add({'proj': JSON.stringify(quantifiedProj), 'instance': JSON.stringify(entry.quantified)});
                     }
 
                     // Add an instance check notification
@@ -222,6 +237,10 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     }
                 }
             };
+
+            if (profile) putRequest.PutRequest.Item.ingestionStartTime = {N: item.ingestionStartTime};
+            if (profile) putRequest.PutRequest.Item.approximateKinesisArrivalTime = {N: item.approximateKinesisArrivalTime};
+            if (profile) putRequest.PutRequest.Item.ddbWriteTime = {N: Date.now().toString()};
 
             if (Object.keys(item.params).length > 0) {
                 putRequest.PutRequest.Item.params = {M: {}}

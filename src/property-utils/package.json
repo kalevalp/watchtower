@@ -1,6 +1,6 @@
 {
   "name": "watchtower-property-utils",
-  "version": "1.2.4",
+  "version": "1.2.6",
   "description": "",
   "main": "prop-utils.js",
   "scripts": {

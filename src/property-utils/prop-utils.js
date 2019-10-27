@@ -209,7 +209,10 @@ function runProperty(property, events, instance, fromState) {
             compound: property.getNewCompoundState ? property.getNewCompoundState() : {},
         };
     } else {
-        state = fromState;
+        state = {
+	    curr: fromState.curr,
+	    compound: JSON.parse(JSON.stringify(fromState.compound)),
+	}
     }
 
     let lastProcessedEvent;
@@ -281,9 +284,11 @@ function runProperty(property, events, instance, fromState) {
 // Return: false if violation cannot be avoided via an extension of partialTail
 //         true if it can be
 //         TODO - consider returning the potential event sequence.
-function hasNonViolatingExtension(property, stablePrefix, partialTail) {
+function hasNonViolatingExtension(property, stablePrefix, partialTail, instance) {
+    if (partialTail.length === 0) return false;
+
     const reachabilityMap = getReachabilityMap(property);
-    let {state} = runProperty(property,stablePrefix);
+    let {state} = runProperty(property,stablePrefix, instance);
 
     function extensionSearch(fromState, tailSuffix, targetState) {
         if (tailSuffix.length > 0) {
