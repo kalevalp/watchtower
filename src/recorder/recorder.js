@@ -6,6 +6,8 @@ const aws = require('aws-sdk');
 
 const kinesis = new aws.Kinesis();
 
+const debug   = process.env.DEBUG_WATCHTOWER;
+
 let promisesToWaitFor = [];
 
 /*
@@ -29,6 +31,8 @@ function createEventPublisher(kinesisStreamName) {
             params.StreamName = kinesisStreamName;
             params.PartitionKey = lambdaContext.functionName;
             params.Data = JSON.stringify(data);
+
+	    if (debug) console.log("Published event: ", JSON.stringify(params));
 
             promisesToWaitFor.push(kinesis.putRecord(params).promise());
         }
