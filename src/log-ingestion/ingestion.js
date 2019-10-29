@@ -33,6 +33,9 @@ function getPropTerm(properties) {
 function createKinesisIngestionHandler (properties) {
     const propTerm = getPropTerm(properties);
 
+    if (debug) console.log("Creating kinesis ingestion handler. properties: ", JSON.stringify(properties));
+
+
     return (kinesisEvent, context) => {
         let functionTime;
         if (profile) functionTime = Date.now();
@@ -51,7 +54,7 @@ function createKinesisIngestionHandler (properties) {
                 if (profile) le.ingestionStartTime = functionTime.toString();
                 if (profile) le.approximateKinesisArrivalTime = (record.kinesis.approximateArrivalTimestamp*1000).toString();
 
-                if (debug) console.log("Ingesting kinesis event: ", le);
+                if (debug) console.log("Ingesting kinesis event: ", JSON.stringify(le));
 
                 return le;
             }
@@ -72,8 +75,8 @@ function createLogIngestionHandler (properties) {
         let logBatch = JSON.parse(zlib.gunzipSync(payload).toString('ascii'));
         let logEvents = logBatch.logEvents;
 
-        if (debug)   console.log(logEvents);
-        if (profile) logEvents.forEach(logEvent => console.log(logEvent));
+        if (debug)   console.log(JSON.stringify(logEvents));
+        if (profile) logEvents.forEach(logEvent => console.log(JSON.stringify(logEvent)));
 
         if (!logEvents.every(logEvent => logEvent.match(eventUpdateRE)))
             throw `Malformed event in log: ${logEvents.find(logEvent => !logEvent.match(eventUpdateRE))}`;
@@ -149,7 +152,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     for (const proj of prop.projections) {
                         const quantifiedProj = {};
                         for (const qvar of proj) {
-                            if (!eventParams[qvar])  throw new Error('Expected param to appear in property!');
+                            if (!eventParams[qvar])  throw new Error(`Expected param to appear in property! param: ${JSON.stringify(qvar)}, eventParams: ${JSON.stringify(eventParams)}, property: ${JSON.stringify(prop)}`);
 
                             quantifiedProj[qvar] = eventParams[qvar];
                         }
@@ -158,9 +161,9 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                     }
 
                     // Add an instance check notification
-                    monitorInstancesToTrigger.add(JSON.stringify(entry.quantified));
+                    monitorInstancesToTrigger.add(JSON.stringify({propname: prop.name, instance: entry.quantified}));
                 } else { // Non-terminating transition
-                    nonTerminatingInstancesToTrigger.add(JSON.stringify(entry.quantified));
+                    nonTerminatingInstancesToTrigger.add(JSON.stringify(entry.quantified)); // TODO - not sure this actually passes what I need
                 }
             }
         }
@@ -318,8 +321,8 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
     }
 
     if (debug) console.log("** Kinesis call:", JSON.stringify(params));
-    if (debug) console.log("** Monitor Instances To Trigger:", JSON.stringify(monitorInstancesToTrigger));
-        
+    if (debug) console.log("** Monitor Instances To Trigger:", JSON.stringify(Array.from(monitorInstancesToTrigger)));
+
     return Promise.all(calls)
         .then(() => params.Records.length > 0 ? kinesis.putRecords(params).promise() : undefined);
 
