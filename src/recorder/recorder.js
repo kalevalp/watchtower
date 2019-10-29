@@ -82,5 +82,31 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
     }
 }
 
+function recorderRequire(originalModuleFile, mock, runLocally) {
+
+    const originalModulePath    = `${runLocally?'':'/var/task/'}${originalModuleFile}`;
+    const originalModuleCode    = fs.readFileSync(originalModuleFile, 'utf8');
+    const originalModuleScript  = new VMScript(originalModuleCode);
+
+    let executionEnv = {
+        console: 'inherit',
+        sandbox: {
+            process: process,
+        },
+        require: {
+            context: 'sandbox',
+            external: true,
+            builtin: ['*'],
+            // root: "./",
+            mock: mock,
+            // import: [], // Might be a useful optimization. Test at some point.
+        },
+    };
+
+    const vm = new NodeVM(executionEnv);
+
+    return vm.run(originalModuleScript, originalModulePath);
+}
+
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
