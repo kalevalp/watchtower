@@ -104,13 +104,17 @@ function eventOrderComparator(a, b) {
     return a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp;
 }
 
-function monitorFactory(prop) {
+function monitorFactory(properties) {
     if (debug) {
-        console.log(JSON.stringify(prop));
+        console.log(JSON.stringify(properties));
     }
 
-    return async function(instance, instanceTriggerKinesisTime, phase, checkerFunctionInvokeTime, triggerStartTime) {
+    return async function(trigger, instanceTriggerKinesisTime, phase, checkerFunctionInvokeTime, triggerStartTime) {
         if (debug) console.log("Running checker, phase: ", phase);
+
+	const prop = properties.find(p => p.name === trigger.propname);
+	const instance = trigger.instance;
+
 
         const ddbCalls = [];
 
