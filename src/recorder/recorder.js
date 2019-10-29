@@ -110,3 +110,4 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
 
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
+module.exports.recorderRequire = recorderRequire;
