@@ -3,6 +3,7 @@ const ddb = new aws.DynamoDB();
 const ses = new aws.SES();
 const cwl = new aws.CloudWatchLogs();
 const proputils = require('watchtower-property-utils');
+const bigint = require('big-integer'); // REOMVE when migrating to Node 10.
 
 const debug           = process.env.DEBUG_WATCHTOWER;
 const eventTable      = process.env['WATCHTOWER_EVENT_TABLE'];
@@ -101,7 +102,26 @@ function updateInstanceStatus(instance, isDischarged, tableName, state, timestam
 
 // Sort by timestamp, with id being a tie-breaker
 function eventOrderComparator(a, b) {
-    return a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp;
+    const ats = Number(a.timestamp.N);
+    const bts = Number(b.timestamp.N);
+
+    if (ats === bts) {
+	const idRegex = /^(.*)_([0-9]*$)/; x =  "af9bc3d5-cb7c-4bae-9744-2de07e12d870_49600917597002393653528194245599750859802740214625992850"
+	const aparsed = a.match(idRegex);
+	const bparsed = b.match(idRegex);
+	if (aparsed && bparsed && aparsed[1] !== undefined && bparsed[1] !+= undefined && aparsed[1] === bparsed[1]) {
+	    const aid = bigint(aparsed[2]);
+	    const bid = bigint(bparsed[2]);
+	    return aid.minus(bid).sign ? -1 : 1;
+	} else {
+	    // TODO - implement mechanism for running all orderings
+	    return 0;
+	}
+    } else {
+	return ats - bts;
+    }
+
+    // return a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp;
 }
 
 function monitorFactory(properties) {

@@ -1,6 +1,6 @@
 {
   "name": "watchtower-monitor",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "",
   "main": "monitor.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "aws-sdk": "^2.553.0"
   },
   "dependencies": {
+    "big-integer": "^1.6.47",
     "watchtower-property-utils": "^1.2.6"
   }
 }
