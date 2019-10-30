@@ -1,9 +1,15 @@
 const graphviz = require('graphviz');
 
 
-function getInstance(prop, eventParams) {
+function getInstance(prop, eventParams, eventType) {
+    let params;
+    if (eventType) {
+	params = prop.stateMachine[eventType].params;
+    } else {
+	params = prop.quantifiedVariables;
+    }
     let propinstKey = prop.name;
-    for (const qvar of prop.quantifiedVariables) {
+    for (const qvar of params) {
         if (eventParams[qvar]) {
             propinstKey += qvar;
             propinstKey += eventParams[qvar];

@@ -132,7 +132,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
                         entry.quantified[qvar] = eventParams[qvar];
                     }
                 }
-                entry.propinst = proputils.getInstance(prop, eventParams); // Partition Key
+                entry.propinst = proputils.getInstance(prop, eventParams, eventType); // Partition Key
 
                 entries.push(entry);
 
