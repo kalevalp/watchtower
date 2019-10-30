@@ -106,10 +106,10 @@ function eventOrderComparator(a, b) {
     const bts = Number(b.timestamp.N);
 
     if (ats === bts) {
-	const idRegex = /^(.*)_([0-9]*$)/; x =  "af9bc3d5-cb7c-4bae-9744-2de07e12d870_49600917597002393653528194245599750859802740214625992850"
+	const idRegex = /^(.*)_([0-9]*$)/;
 	const aparsed = a.match(idRegex);
 	const bparsed = b.match(idRegex);
-	if (aparsed && bparsed && aparsed[1] !== undefined && bparsed[1] !+= undefined && aparsed[1] === bparsed[1]) {
+	if (aparsed && bparsed && aparsed[1] !== undefined && bparsed[1] !== undefined && aparsed[1] === bparsed[1]) {
 	    const aid = bigint(aparsed[2]);
 	    const bid = bigint(bparsed[2]);
 	    return aid.minus(bid).sign ? -1 : 1;
