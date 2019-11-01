@@ -44,6 +44,30 @@ function createEventPublisher(kinesisStreamName) {
     }
 }
 
+function createBatchEventPublisher(kinesisStreamName) {
+    if (kinesisStreamName) {
+        return (logEvents, lambdaContext) => {
+            const params = {};
+            params.StreamName = kinesisStreamName;
+            params.Records = logEvents.map(event => ({logEvent: event, 
+                                                      timestamp: Date.now(),
+                                                      invocationID: lambdaContext.awsRequestId}))
+                .map(data => ({Data: JSON.stringify(data),
+                               PartitionKey: lambdaContext.awsRequestId}))
+            
+	    if (debug) console.log("Published batch event: ", JSON.stringify(params));
+            
+            promisesToWaitFor.push(kinesis.putRecords(params).promise());
+        }
+    } else {
+        return (logEvent) => {
+            console.log(`#####EVENTUPDATE${JSON.stringify(logEvent)}#####`);
+        }
+    }
+}
+
+
+
 function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext) {
 
     const originalLambdaPath    = `${runLocally?'':'/var/task/'}${originalLambdaFile}`;
@@ -111,3 +135,4 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
 module.exports.recorderRequire = recorderRequire;
+module.exports.createBatchEventPublisher = createBatchEventPublisher;
