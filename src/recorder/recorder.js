@@ -8,6 +8,11 @@ const kinesis = new aws.Kinesis();
 
 const debug   = process.env.DEBUG_WATCHTOWER;
 
+function getRandString() {
+    const sevenDigitID = Math.floor(Math.random() * Math.floor(9999999));
+    return `${fiveDigitID}`;
+}
+
 let promisesToWaitFor = [];
 
 /*
@@ -53,7 +58,7 @@ function createBatchEventPublisher(kinesisStreamName) {
                                                       timestamp: Date.now(),
                                                       invocationID: lambdaContext.awsRequestId}))
                 .map(data => ({Data: JSON.stringify(data),
-                               PartitionKey: lambdaContext.awsRequestId}))
+                               PartitionKey: `${lambdaContext.awsRequestId}${getRandString()}`}))
             
 	    if (debug) console.log("Published batch event: ", JSON.stringify(params));
             
