@@ -10,7 +10,7 @@ const debug   = process.env.DEBUG_WATCHTOWER;
 
 function getRandString() {
     const sevenDigitID = Math.floor(Math.random() * Math.floor(9999999));
-    return `${fiveDigitID}`;
+    return `${sevenDigitID}`;
 }
 
 let promisesToWaitFor = [];
