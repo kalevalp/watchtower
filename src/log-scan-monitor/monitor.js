@@ -1,7 +1,6 @@
 const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
-const ses = new aws.SES();
-const cwl = new aws.CloudWatchLogs();
+// const ses = new aws.SES();
 const proputils = require('watchtower-property-utils');
 const bigint = require('big-integer'); // REOMVE when migrating to Node 10.
 
@@ -45,7 +44,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
             if (!invokedInstances.includes(instStr)){
                 const inst = JSON.parse(instStr);
 		const triggerStartTime = event.triggerStartTime ? event.triggerStartTime : checkerFunctionInvokeTime;
-                monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, event.phase, checkerFunctionInvokeTime, triggerStartTime));
+                monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, checkerFunctionInvokeTime, triggerStartTime));
                 invokedInstances.push(instStr);
             } else {
                 if (debug) console.log("Invocation with multiple instances. Instance:", instStr);
@@ -129,8 +128,8 @@ function monitorFactory(properties) {
         console.log(JSON.stringify(properties));
     }
 
-    return async function(trigger, instanceTriggerKinesisTime, phase, checkerFunctionInvokeTime, triggerStartTime) {
-        if (debug) console.log("Running checker, phase: ", phase);
+    return async function(trigger, instanceTriggerKinesisTime, checkerFunctionInvokeTime, triggerStartTime) {
+        if (debug) console.log("Running checker");
 
 	const prop = properties.find(p => p.name === trigger.propname);
 	const instance = trigger.instance;
@@ -242,45 +241,23 @@ function monitorFactory(properties) {
 
                 if (debug) console.log("stabilityTime: ", stabilityTime);
 
-                const stablePrefix = results.filter(e => Number(e.timestamp.N) < stabilityTime);
-                const partialTail = results.filter(e => Number(e.timestamp.N) >= stabilityTime);
+                const stableEvents = results.filter(e => Number(e.timestamp.N) < stabilityTime);
 
-                if (debug) console.log("Stable prefix: ", JSON.stringify(stablePrefix));
-                if (debug) console.log("Partial tail: ", JSON.stringify(partialTail));
+                if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
                 let state;
                 let lastProcessedEvent;
 
-                const stableIntermediateState = proputils.runProperty(prop, stablePrefix, instance);
-                state = stableIntermediateState.state;
-                lastProcessedEvent = stableIntermediateState.lastProcessedEvent;
-
-                // Only run the unstable part in the initial run of the checker.
-                if (phase === 'initialPhase' && partialTail.length > 0) {
-                    const partialExecutionState = proputils.runProperty(prop, partialTail, instance, state);
-                    state = partialExecutionState.state;
-                    lastProcessedEvent = partialExecutionState.lastProcessedEvent;
-                }
-
-                let definitivelyDischarged;
+                const intermediateState = proputils.runProperty(prop, stableEvents, instance);
+                const state = intermediateState.state;
+                const lastProcessedEvent = intermediateState.lastProcessedEvent;
 
                 // Handling the state the FSM ended up in after processing all the events.
                 if (state.curr === 'FAILURE') {
 
-                    /* Optimizing reporting.
-                     * If the violation is in the partial execution, and we're in the initial call, check if there can be a
-                     * non violating extension. If there cannot, then this is a real violation.
-                     * */
-                    // Check if, given the violation, there exists an extension (within the eventual consistency window) that does not lead to a violation.
-                    const canHazExtenstion = proputils.hasNonViolatingExtension(prop, stablePrefix, partialTail, instance);
-                    const shouldCaveat = canHazExtenstion && phase === 'initialPhase';
-
-                    definitivelyDischarged = !shouldCaveat;
-
-                    if (profile) { 
+                    if (profile) {
                         const profileReport = {
                             instance,
-                            phase,
                             eventOccuredTimestamp: Number(lastProcessedEvent.timestamp.N),
                             eventKinesisArrivedTimestamp: Number(lastProcessedEvent.approximateKinesisArrivalTime.N),
                             ingestionFunctionStartTime: Number(lastProcessedEvent.ingestionStartTime.N),
@@ -292,23 +269,21 @@ function monitorFactory(properties) {
                         }
 
                         console.log(`@@@@WT_PROF: FULL REPORT ---${JSON.stringify(profileReport)}---`);
-
-                        console.log(`@@@@WT_PROF:${shouldCaveat ? 'POTENTIAL' : ''} VIOLATION REPORT DELAY: ${Date.now()-Number(lastProcessedEvent.timestamp.N)}(ms)`);
+                        console.log(`@@@@WT_PROF: VIOLATION REPORT DELAY: ${Date.now()-Number(lastProcessedEvent.timestamp.N)}(ms)`);
                     }
 
                     // Report to the user that the property had been violated.
-                    const caveat = '\n\nNote that due to eventual consistency concerns, this violation may be spurious. \nWe will recheck the property as soon as the system has stabilized, and will report a definitive answer shortly.';
                     // const params = {
                     //     Destination: { ToAddresses: [ 'mossie.torp@ethereal.email' ] },
                     //     Message: {
-                    //         Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}.${shouldCaveat ? caveat : ''}`} },
-                    //         Subject: { Data: `${shouldCaveat ? 'Potential ' : ''}PROPERTY VIOLATION: ${prop.name}` }
+                    //         Body: { Text: { Data: `Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}.`} },
+                    //         Subject: { Data: `PROPERTY VIOLATION: ${prop.name}` }
                     //     },
                     //     Source: 'mossie.torp@ethereal.email',
                     // };
                     // await ses.sendEmail(params).promise();
 
-                    console.log(`Property ${prop.name} was${shouldCaveat ? ' POTENTIALLY' : ''} violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.`);
+                    console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.`);
                 } else if (state.curr === 'SUCCESS') {
                     console.log(`Property ${prop.name} holds for property instance ${JSON.stringify(instance)}`);
                 } else {
@@ -316,20 +291,20 @@ function monitorFactory(properties) {
                 }
 
                 // GC
-                if (['FAILURE', 'SUCCESS'].includes(stableIntermediateState.state.curr) || definitivelyDischarged){
-                    if (debug) console.log(`${definitivelyDischarged ? 'Definitively d' : 'D'}ischarged property${definitivelyDischarged ? '' : 'in the stable part'}. stableIntermediateState: `, JSON.stringify(stableIntermediateState));
+                if (['FAILURE', 'SUCCESS'].includes(intermediateState.state.curr)){
+                    if (debug) console.log(`Discharged property. intermediateState: `, JSON.stringify(intermediateState));
                     // Mark instance as discharged
                     await updateInstanceStatus(proputils.getInstance(prop,instance), true, checkpointTable);
                 } else {
                     // Checkpoint the stable part of the instance execution
-                    const lastEvent = stableIntermediateState.lastProcessedEvent;
+                    const lastEvent = intermediateState.lastProcessedEvent;
                     if (debug) console.log("Checkpointing stable. Last event: ", JSON.stringify(lastEvent));
-                    if (lastEvent && stableIntermediateState.state && lastEvent.timestamp && lastEvent.id)
-                    await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, stableIntermediateState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
+                    if (lastEvent && intermediateState.state && lastEvent.timestamp && lastEvent.id)
+                    await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, intermediateState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
                 }
 
                 // Mark TTL for all stable instance events (not projections).
-                return Promise.all(stablePrefix.filter(e => e.propinst.S === proputils.getInstance(prop,instance)) // Removes projections
+                return Promise.all(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance)) // Removes projections
                     .map(e => updateInstanceExpiration(e)));
             })
             .catch((err) => console.log(err));
