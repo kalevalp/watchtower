@@ -137,7 +137,70 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
     return vm.run(originalModuleScript, originalModulePath);
 }
 
+/**
+ * Proxy Conditions:
+ *  [
+ *   {cond: () -> Bool, opInSucc: () -> ()}
+ *  ]
+ */
+function createDDBDocClientMock (getProxyConditions,
+				 putProxyConditions,
+				 deleteProxyConditions,
+				 queryProxyConditions) {
+
+    function proxyFactory(conditions) {
+	return (underlyingObj) => new Proxy(underlyingObj, {
+            apply: function (target, thisArg, argumentsList) {
+		for (cond of conditions) {
+		    if (cond.cond(target, thisArg, argumentsList)) {
+			return target.apply(thisArg, argumentsList)
+			    .on('success', cond.opInSucc(argumentsList));
+		    }
+		}
+		return target.apply(thisArg, argumentsList);
+            },
+	});
+    }
+
+    const proxies = [{name: 'get',    proxy: undefined, producer: proxyFactory(getProxyConditions)},
+		     {name: 'put',    proxy: undefined, producer: proxyFactory(putProxyConditions)},
+		     {name: 'delete', proxy: undefined, producer: proxyFactory(deleteProxyConditions)},
+		     {name: 'query',  proxy: undefined, producer: proxyFactory(queryProxyConditions)},
+		    ];
+
+    return new Proxy(aws, {
+	get: function (obj, prop) {
+            if (prop === "DynamoDB")
+		return new Proxy(obj[prop], {
+                    get: function (obj, prop) {
+			if (prop === "DocumentClient")
+                            return new Proxy(obj[prop], {
+				construct: function (target, args) {
+                                    return new Proxy(new target(...args), {
+					get: function (obj, prop) {
+					    for (prx of proxies) {
+						if (prop === prx.name) {
+						    if (!prx.proxy) {
+							prx.proxy = prx.producer(obj[prop]);
+						    }
+						    return prx.proxy;
+						}
+					    }
+					    return obj[prop];
+					}
+                                    });
+				},
+                            });
+			else
+                            return obj[prop];
+                    }});
+            else
+		return obj[prop];
+	}})
+}
+
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
 module.exports.recorderRequire = recorderRequire;
 module.exports.createBatchEventPublisher = createBatchEventPublisher;
+module.exports.createDDBDocClientMock = createDDBDocClientMock;
