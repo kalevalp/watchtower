@@ -151,7 +151,7 @@ function createDDBDocClientMock (getProxyConditions,
     function proxyFactory(conditions) {
 	return (underlyingObj) => new Proxy(underlyingObj, {
             apply: function (target, thisArg, argumentsList) {
-		for (cond of conditions) {
+		for (const cond of conditions) {
 		    if (cond.cond(target, thisArg, argumentsList)) {
 			return target.apply(thisArg, argumentsList)
 			    .on('success', cond.opInSucc(argumentsList));
@@ -178,7 +178,7 @@ function createDDBDocClientMock (getProxyConditions,
 				construct: function (target, args) {
                                     return new Proxy(new target(...args), {
 					get: function (obj, prop) {
-					    for (prx of proxies) {
+					    for (const prx of proxies) {
 						if (prop === prx.name) {
 						    if (!prx.proxy) {
 							prx.proxy = prx.producer(obj[prop]);
