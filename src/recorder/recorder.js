@@ -59,9 +59,9 @@ function createBatchEventPublisher(kinesisStreamName) {
                                                       invocationID: lambdaContext.awsRequestId}))
                 .map(data => ({Data: JSON.stringify(data),
                                PartitionKey: `${lambdaContext.awsRequestId}${getRandString()}`}))
-            
+
 	    if (debug) console.log("Published batch event: ", JSON.stringify(params));
-            
+
             promisesToWaitFor.push(kinesis.putRecords(params).promise());
         }
     } else {
@@ -143,29 +143,49 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
  *   {cond: () -> Bool, opInSucc: () -> ()}
  *  ]
  */
-function createDDBDocClientMock (getProxyConditions,
-				 putProxyConditions,
-				 deleteProxyConditions,
-				 queryProxyConditions) {
 
-    function proxyFactory(conditions) {
-	return (underlyingObj) => new Proxy(underlyingObj, {
-            apply: function (target, thisArg, argumentsList) {
-		for (const cond of conditions) {
-		    if (cond.cond(target, thisArg, argumentsList)) {
+function proxyFactory(conditions, useCallbacks = false) {
+    return (underlyingObj) => new Proxy(underlyingObj, {
+        apply: function (target, thisArg, argumentsList) {
+	    for (const cond of conditions) {
+		if (cond.cond(target, thisArg, argumentsList)) {
+		    if (!useCallbacks) {
 			return target.apply(thisArg, argumentsList)
 			    .on('success', cond.opInSucc(argumentsList));
+		    } else {
+			// Assume last element of argumentsList is the callback function
+			const cbackIdx = argumentsList.length - 1;
+			const cbackFunc = argumentsList[cbackIdx];
+
+			if (typeof cbackFunc === 'function') {
+			    argumentsList[cbackIdx] = (...args) => {
+				// assume standard callback format - args[0] === null/undefined => successful call
+				if (args[0]) {
+				    cond.opInSucc(argumentsList);
+				}
+				return cbackFunc[...args];
+			    }
+			} else { // The callback here is not as expected. Falling back to doing nothing.
+			    return target.apply(thisArg, argumentsList);
+			}
 		    }
 		}
-		return target.apply(thisArg, argumentsList);
-            },
-	});
-    }
+	    }
+	    return target.apply(thisArg, argumentsList);
+        },
+    });
+}
 
-    const proxies = [{name: 'get',    proxy: undefined, producer: proxyFactory(getProxyConditions)},
-		     {name: 'put',    proxy: undefined, producer: proxyFactory(putProxyConditions)},
-		     {name: 'delete', proxy: undefined, producer: proxyFactory(deleteProxyConditions)},
-		     {name: 'query',  proxy: undefined, producer: proxyFactory(queryProxyConditions)},
+function createDDBDocClientMock ( getProxyConditions,
+				  putProxyConditions,
+				  deleteProxyConditions,
+				  queryProxyConditions,
+				  useCallbacks = false ) {
+
+    const proxies = [{name: 'get',    proxy: undefined, producer: proxyFactory(getProxyConditions, useCallbacks)},
+		     {name: 'put',    proxy: undefined, producer: proxyFactory(putProxyConditions, useCallbacks)},
+		     {name: 'delete', proxy: undefined, producer: proxyFactory(deleteProxyConditions, useCallbacks)},
+		     {name: 'query',  proxy: undefined, producer: proxyFactory(queryProxyConditions, useCallbacks)},
 		    ];
 
     return new Proxy(aws, {
