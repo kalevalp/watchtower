@@ -2,6 +2,7 @@
 
 const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
+const util = require('util');
 const aws = require('aws-sdk');
 
 const kinesis = new aws.Kinesis();
@@ -150,19 +151,28 @@ function proxyFactory(conditions, useCallbacks = false) {
 	    for (const cond of conditions) {
 		if (cond.cond(target, thisArg, argumentsList)) {
 		    if (!useCallbacks) {
+			if (debug) console.log("Running in promise mode");
 			return target.apply(thisArg, argumentsList)
+			    .on('success', (...resp) => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`)})
 			    .on('success', cond.opInSucc(argumentsList));
 		    } else {
+			if (debug) console.log("Running in callback mode");
 			// Assume last element of argumentsList is the callback function
 			const cbackIdx = argumentsList.length - 1;
 			const cbackFunc = argumentsList[cbackIdx];
 
 			if (typeof cbackFunc === 'function') {
+			    if (debug) console.log("Last arg in call is a function, assuming it is a callback and changing the callback function");
 			    argumentsList[cbackIdx] = (...args) => {
+				if (debug) console.log(`Running from within modified callback.`);
+				if (debug) console.log(`args is: ${JSON.stringify(args)}`);
 				// assume standard callback format - args[0] === null/undefined => successful call
-				if (args[0]) {
+				if (!args[0]) {
+				    if (debug) console.log("Calling the op.");
 				    cond.opInSucc(argumentsList);
+				    if (debug) console.log("Finished calling the op.");
 				}
+				if (debug) console.log("Calling the original callback");
 				return cbackFunc(...args);
 			    }
 			} // Otherwise, the callback here is not as expected. Falling back to doing nothing.
