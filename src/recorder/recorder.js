@@ -107,8 +107,15 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             return Promise.all(promisesToWaitFor)
                 .then(() => Promise.resolve(retVal));
         }
-    } else {
-        return vmExports[originalLambdaHandler];
+    } else { // assume callback TODO: a better way to specify this.
+	return (event, context, callback) => {
+	    promisesToWaitFor = [];
+	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
+		return Promise.all(promisesToWaitFor)
+		    .then((resolvedVal) => callback(null, resolvedVal),
+			  (errVal) => callback(errVal));
+	    });
+	}
     }
 }
 
