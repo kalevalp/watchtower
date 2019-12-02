@@ -74,7 +74,7 @@ function createBatchEventPublisher(kinesisStreamName) {
 
 
 
-function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext) {
+function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext, useCallbacks = false) {
 
     const originalLambdaPath    = `${runLocally?'':'/var/task/'}${originalLambdaFile}`;
     const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
@@ -99,7 +99,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
-    if (updateContext) {
+    if (!useCallbacks) {
         return async (event, context) => {
             promisesToWaitFor = [];
             updateContext(originalLambdaHandler, event, context);
@@ -107,9 +107,10 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             return Promise.all(promisesToWaitFor)
                 .then(() => Promise.resolve(retVal));
         }
-    } else { // assume callback TODO: a better way to specify this.
+    } else {
 	return (event, context, callback) => {
 	    promisesToWaitFor = [];
+	    updateContext(originalLambdaHandler, event, context);
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
 		return Promise.all(promisesToWaitFor)
 		    .then((resolvedVal) => callback(null, resolvedVal),
