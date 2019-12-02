@@ -165,9 +165,9 @@ function proxyFactory(conditions, useCallbacks = false) {
 				}
 				return cbackFunc(...args);
 			    }
-			} else { // The callback here is not as expected. Falling back to doing nothing.
-			    return target.apply(thisArg, argumentsList);
-			}
+			} // Otherwise, the callback here is not as expected. Falling back to doing nothing.
+
+			return target.apply(thisArg, argumentsList);
 		    }
 		}
 	    }
