@@ -140,7 +140,7 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
 /**
  * Proxy Conditions:
  *  [
- *   {cond: () -> Bool, opInSucc: () -> ()}
+ *   {cond: () -> Bool, opInSucc: () -> () -> ()}
  *  ]
  */
 
@@ -163,7 +163,7 @@ function proxyFactory(conditions, useCallbacks = false) {
 				if (args[0]) {
 				    cond.opInSucc(argumentsList);
 				}
-				return cbackFunc[...args];
+				return cbackFunc(...args);
 			    }
 			} else { // The callback here is not as expected. Falling back to doing nothing.
 			    return target.apply(thisArg, argumentsList);
