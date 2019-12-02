@@ -245,9 +245,6 @@ function monitorFactory(properties) {
 
                 if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
-                let state;
-                let lastProcessedEvent;
-
                 const intermediateState = proputils.runProperty(prop, stableEvents, instance);
                 const state = intermediateState.state;
                 const lastProcessedEvent = intermediateState.lastProcessedEvent;
