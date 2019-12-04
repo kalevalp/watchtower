@@ -237,8 +237,83 @@ function createDDBDocClientMock ( getProxyConditions,
 	}})
 }
 
+function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false) {
+    const twit = require('twit');
+
+    let proxy;
+
+    return new Proxy(twit, {
+	construct: function (target, args) {
+	    if (debug) console.log("In construct:", target, args);
+	    return new Proxy(new target(...args), {
+		get: function (obj, prop) {
+		    if (debug) console.log("In get:", obj, prop);
+		    if (prop === "post") {
+			if (reallyMock) {
+			    return new Proxy (() => {}, {
+				apply: function (target, thisArg, argumentsList) {
+				    for (const cond of proxyConditions) {
+					if (cond.cond(target, thisArg, argumentsList)) {
+					    cond.opInSucc(argumentsList);
+					    break;
+					}
+				    }
+				    if (debug) console.log("Twit.post: Are you mocking me? 'coz I feel like I'm being mocked!");
+				}
+			    });
+			} else {
+			    if (!proxy) {
+				proxy = proxyFactory(proxyConditions, useCallbacks);
+			    }
+			    return proxy;
+			}
+		    } else {
+			return obj[prop];
+		    }
+		}
+	    });
+	},
+    });
+}
+
+function createRPMock(proxyConditions, useCallbacks = false, reallyMock = false) {
+    debugger;
+    const rp = require('request-promise');
+    let proxy;
+
+    if (reallyMock) {
+	return new Proxy(rp, {
+	    apply: function (target, thisArg, argumentsList) {
+		for (const cond of proxyConditions) {
+		    if (cond.cond(target, thisArg, argumentsList)) {
+			cond.opInSucc(argumentsList);
+			break;
+		    }
+		}
+		if (debug) console.log("RP: Are you mocking me? 'coz I feel like I'm being mocked!");
+	    }
+	});
+    } else {
+	if (!proxy) {
+	    proxy = proxyFactory(proxyConditions, useCallbacks);
+	}
+	return proxy;
+    }
+}
+
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
 module.exports.recorderRequire = recorderRequire;
 module.exports.createBatchEventPublisher = createBatchEventPublisher;
 module.exports.createDDBDocClientMock = createDDBDocClientMock;
+module.exports.createTwitMock = createTwitMock;
+module.exports.createRPMock = createRPMock;
+
+if (require.main === module) {
+    const t = createTwitMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], true, true);
+    const y = new t({consumer_key: '123', consumer_secret: '456', access_token: '789', access_token_secret: 'abc'});
+    y.post();
+
+    const r = createRPMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], false, true);
+    r();
+};
