@@ -113,7 +113,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 	    updateContext(originalLambdaHandler, event, context);
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
 		return Promise.all(promisesToWaitFor)
-		    .then((resolvedVal) => callback(null, resolvedVal),
+		    .then(() => callback(err, success),
 			  (errVal) => callback(errVal));
 	    });
 	}
