@@ -263,7 +263,7 @@ function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false
 			    });
 			} else {
 			    if (!proxy) {
-				proxy = proxyFactory(proxyConditions, useCallbacks);
+				proxy = proxyFactory(proxyConditions, useCallbacks)(twit);
 			    }
 			    return proxy;
 			}
@@ -295,7 +295,7 @@ function createRPMock(proxyConditions, useCallbacks = false, reallyMock = false)
 	});
     } else {
 	if (!proxy) {
-	    proxy = proxyFactory(proxyConditions, useCallbacks);
+	    proxy = proxyFactory(proxyConditions, useCallbacks)(rp);
 	}
 	return proxy;
     }
