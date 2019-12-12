@@ -263,7 +263,7 @@ function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false
 			    });
 			} else {
 			    if (!proxy) {
-				proxy = proxyFactory(proxyConditions, useCallbacks)(twit);
+				proxy = proxyFactory(proxyConditions, useCallbacks)(obj[prop]);
 			    }
 			    return proxy;
 			}
