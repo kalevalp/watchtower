@@ -1,6 +1,6 @@
 {
   "name": "watchtower-recorder",
-  "version": "1.11.3",
+  "version": "1.11.5",
   "description": "Module in charge of recording external function interactions.",
   "main": "recorder.js",
   "scripts": {
