@@ -301,6 +301,25 @@ function createRPMock(proxyConditions, useCallbacks = false, reallyMock = false)
     }
 }
 
+function createSendgridMailMock(proxyConditions) {
+    const sgMail = require('@sendgrid/mail');
+
+    let proxy;
+    return new Proxy(sgMail, {
+	get: function (obj, prop) {
+	    if (debug) console.log("In get:", obj, prop);
+	    if (prop === "send") {
+		if (!proxy) {
+		    proxy = proxyFactory(proxyConditions)(obj[prop]);
+		}
+		return proxy;
+	    } else {
+		return obj[prop];
+	    }
+	}
+    });
+}
+
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
 module.exports.recorderRequire = recorderRequire;
@@ -308,6 +327,7 @@ module.exports.createBatchEventPublisher = createBatchEventPublisher;
 module.exports.createDDBDocClientMock = createDDBDocClientMock;
 module.exports.createTwitMock = createTwitMock;
 module.exports.createRPMock = createRPMock;
+module.exports.createSendgridMailMock = createSendgridMailMock;
 
 if (require.main === module) {
     const t = createTwitMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], true, true);
@@ -316,4 +336,7 @@ if (require.main === module) {
 
     const r = createRPMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], false, true);
     r();
+
+    const sgm = createSendgridMailMock();
+    sgm.send();
 };
