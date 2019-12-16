@@ -27,6 +27,7 @@ let promisesToWaitFor = [];
  *   }
  */
 function createEventPublisher(kinesisStreamName) {
+    if (debug) console.log("Creating event publisher. kinesisStreamName:", kinesisStreamName);
     if (kinesisStreamName) {
         return (logEvent, lambdaContext) => {
             const params = {};
@@ -177,7 +178,7 @@ function proxyFactory(conditions, useCallbacks = false) {
 				// assume standard callback format - args[0] === null/undefined => successful call
 				if (!args[0]) {
 				    if (debug) console.log("Calling the op.");
-				    cond.opInSucc(argumentsList);
+				    cond.opInSucc(argumentsList)(...args);
 				    if (debug) console.log("Finished calling the op.");
 				}
 				if (debug) console.log("Calling the original callback");
@@ -254,7 +255,7 @@ function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false
 				apply: function (target, thisArg, argumentsList) {
 				    for (const cond of proxyConditions) {
 					if (cond.cond(target, thisArg, argumentsList)) {
-					    cond.opInSucc(argumentsList);
+					    cond.opInSucc(argumentsList)();
 					    break;
 					}
 				    }
@@ -263,7 +264,7 @@ function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false
 			    });
 			} else {
 			    if (!proxy) {
-				proxy = proxyFactory(proxyConditions, useCallbacks)(twit);
+				proxy = proxyFactory(proxyConditions, useCallbacks)(obj[prop]);
 			    }
 			    return proxy;
 			}
@@ -286,7 +287,7 @@ function createRPMock(proxyConditions, useCallbacks = false, reallyMock = false)
 	    apply: function (target, thisArg, argumentsList) {
 		for (const cond of proxyConditions) {
 		    if (cond.cond(target, thisArg, argumentsList)) {
-			cond.opInSucc(argumentsList);
+			cond.opInSucc(argumentsList)();
 			break;
 		    }
 		}
