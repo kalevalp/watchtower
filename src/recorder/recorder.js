@@ -154,16 +154,21 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
  *  ]
  */
 
-function proxyFactory(conditions, useCallbacks = false) {
+function proxyFactory(conditions, useCallbacks = false, awssdk = false) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
 	    for (const cond of conditions) {
 		if (cond.cond(target, thisArg, argumentsList)) {
-		    if (!useCallbacks) {
+		    if (!useCallbacks && awssdk) {
+			if (debug) console.log("Running in aws-sdk 'promise' mode");
+			return target.apply(thisArg, argumentsList)
+			    .on('success', (...resp) => {if (debug) console.log(`Running from within aws-sdk callback (pseudo-promise). resp is ${util.inspect(resp)}`)})
+			    .on('success', cond.opInSucc(argumentsList));
+		    } else if (!useCallbacks && !awssdk) {
 			if (debug) console.log("Running in promise mode");
 			return target.apply(thisArg, argumentsList)
-			    .on('success', (...resp) => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`)})
-			    .on('success', cond.opInSucc(argumentsList));
+			    .then(resp => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`); return resp;})
+			    .then(cond.opInSucc(argumentsList));
 		    } else {
 			if (debug) console.log("Running in callback mode");
 			// Assume last element of argumentsList is the callback function
@@ -201,10 +206,10 @@ function createDDBDocClientMock ( getProxyConditions,
 				  queryProxyConditions,
 				  useCallbacks = false ) {
 
-    const proxies = [{name: 'get',    proxy: undefined, producer: proxyFactory(getProxyConditions, useCallbacks)},
-		     {name: 'put',    proxy: undefined, producer: proxyFactory(putProxyConditions, useCallbacks)},
-		     {name: 'delete', proxy: undefined, producer: proxyFactory(deleteProxyConditions, useCallbacks)},
-		     {name: 'query',  proxy: undefined, producer: proxyFactory(queryProxyConditions, useCallbacks)},
+    const proxies = [{name: 'get',    proxy: undefined, producer: proxyFactory(getProxyConditions, useCallbacks, true)},
+		     {name: 'put',    proxy: undefined, producer: proxyFactory(putProxyConditions, useCallbacks, true)},
+		     {name: 'delete', proxy: undefined, producer: proxyFactory(deleteProxyConditions, useCallbacks, true)},
+		     {name: 'query',  proxy: undefined, producer: proxyFactory(queryProxyConditions, useCallbacks, true)},
 		    ];
 
     return new Proxy(aws, {
