@@ -153,46 +153,15 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
  *   {cond: () -> Bool, opInSucc: () -> () -> ()}
  *  ]
  */
-
-function proxyFactory(conditions, useCallbacks = false, awssdk = false) {
+function awsPromiseProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
 	    for (const cond of conditions) {
 		if (cond.cond(target, thisArg, argumentsList)) {
-		    if (!useCallbacks && awssdk) {
-			if (debug) console.log("Running in aws-sdk 'promise' mode");
-			return target.apply(thisArg, argumentsList)
-			    .on('success', (...resp) => {if (debug) console.log(`Running from within aws-sdk callback (pseudo-promise). resp is ${util.inspect(resp)}`)})
-			    .on('success', cond.opInSucc(argumentsList));
-		    } else if (!useCallbacks && !awssdk) {
-			if (debug) console.log("Running in promise mode");
-			return target.apply(thisArg, argumentsList)
-			    .then(resp => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`); return resp;})
-			    .then(cond.opInSucc(argumentsList));
-		    } else {
-			if (debug) console.log("Running in callback mode");
-			// Assume last element of argumentsList is the callback function
-			const cbackIdx = argumentsList.length - 1;
-			const cbackFunc = argumentsList[cbackIdx];
-
-			if (typeof cbackFunc === 'function') {
-			    if (debug) console.log("Last arg in call is a function, assuming it is a callback and changing the callback function");
-			    argumentsList[cbackIdx] = (...args) => {
-				if (debug) console.log(`Running from within modified callback.`);
-				if (debug) console.log(`args is: ${JSON.stringify(args)}`);
-				// assume standard callback format - args[0] === null/undefined => successful call
-				if (!args[0]) {
-				    if (debug) console.log("Calling the op.");
-				    cond.opInSucc(argumentsList)(...args);
-				    if (debug) console.log("Finished calling the op.");
-				}
-				if (debug) console.log("Calling the original callback");
-				return cbackFunc(...args);
-			    }
-			} // Otherwise, the callback here is not as expected. Falling back to doing nothing.
-
-			return target.apply(thisArg, argumentsList);
-		    }
+		    if (debug) console.log("Running in aws-sdk 'promise' mode");
+		    return target.apply(thisArg, argumentsList)
+			.on('success', (...resp) => {if (debug) console.log(`Running from within aws-sdk callback (pseudo-promise). resp is ${util.inspect(resp)}`)})
+			.on('success', cond.opInSucc(argumentsList));
 		}
 	    }
 	    return target.apply(thisArg, argumentsList);
@@ -200,16 +169,65 @@ function proxyFactory(conditions, useCallbacks = false, awssdk = false) {
     });
 }
 
+function promiseProxyFactory(conditions) {
+    return (underlyingObj) => new Proxy(underlyingObj, {
+        apply: function (target, thisArg, argumentsList) {
+	    for (const cond of conditions) {
+		if (cond.cond(target, thisArg, argumentsList)) {
+		    if (debug) console.log("Running in promise mode");
+		    return target.apply(thisArg, argumentsList)
+			.then(resp => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`); return resp;})
+			.then(cond.opInSucc(argumentsList));
+		}
+	    }
+	    return target.apply(thisArg, argumentsList);
+        },
+    });
+}
+
+function cbackProxyFactory(conditions) {
+    return (underlyingObj) => new Proxy(underlyingObj, {
+        apply: function (target, thisArg, argumentsList) {
+	    for (const cond of conditions) {
+		if (cond.cond(target, thisArg, argumentsList)) {
+		    if (debug) console.log("Running in callback mode");
+		    // Assume last element of argumentsList is the callback function
+		    const cbackIdx = argumentsList.length - 1;
+		    const cbackFunc = argumentsList[cbackIdx];
+
+		    if (typeof cbackFunc === 'function') {
+			if (debug) console.log("Last arg in call is a function, assuming it is a callback and changing the callback function");
+			argumentsList[cbackIdx] = (...args) => {
+			    if (debug) console.log(`Running from within modified callback. args is: ${JSON.stringify(args)}`);
+			    // assume standard callback format - args[0] === null/undefined => successful call
+			    if (!args[0]) {
+				if (debug) console.log("Calling the op.");
+				cond.opInSucc(argumentsList)(...args);
+				if (debug) console.log("Finished calling the op.");
+			    }
+			    if (debug) console.log("Calling the original callback");
+			    return cbackFunc(...args);
+			}
+		    } // Otherwise, the callback here is not as expected. Falling back to doing nothing.
+
+		    return target.apply(thisArg, argumentsList);
+		}
+	    }
+	    return target.apply(thisArg, argumentsList);
+        },
+    });
+};
+
 function createDDBDocClientMock ( getProxyConditions,
 				  putProxyConditions,
 				  deleteProxyConditions,
 				  queryProxyConditions,
 				  useCallbacks = false ) {
 
-    const proxies = [{name: 'get',    proxy: undefined, producer: proxyFactory(getProxyConditions, useCallbacks, true)},
-		     {name: 'put',    proxy: undefined, producer: proxyFactory(putProxyConditions, useCallbacks, true)},
-		     {name: 'delete', proxy: undefined, producer: proxyFactory(deleteProxyConditions, useCallbacks, true)},
-		     {name: 'query',  proxy: undefined, producer: proxyFactory(queryProxyConditions, useCallbacks, true)},
+    const proxies = [{name: 'get',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(getProxyConditions) : awsPromiseProxyFactory(getProxyConditions)},
+		     {name: 'put',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(putProxyConditions) : awsPromiseProxyFactory(putProxyConditions)},
+                     {name: 'delete', proxy: undefined, producer: useCallbacks ? cbackProxyFactory(deleteProxyConditions) : awsPromiseProxyFactory(deleteProxyConditions)},
+                     {name: 'query',  proxy: undefined, producer: useCallbacks ? cbackProxyFactory(queryProxyConditions) : awsPromiseProxyFactory(queryProxyConditions)},
 		    ];
 
     return new Proxy(aws, {
@@ -269,7 +287,7 @@ function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false
 			    });
 			} else {
 			    if (!proxy) {
-				proxy = proxyFactory(proxyConditions, useCallbacks)(obj[prop]);
+				proxy = (useCallbacks ? cbackProxyFactory(proxyConditions) : promiseProxyFactory(proxyConditions))(obj[prop]);
 			    }
 			    return proxy;
 			}
@@ -301,7 +319,7 @@ function createRPMock(proxyConditions, useCallbacks = false, reallyMock = false)
 	});
     } else {
 	if (!proxy) {
-	    proxy = proxyFactory(proxyConditions, useCallbacks)(rp);
+            proxy = (useCallbacks ? cbackProxyFactory(proxyConditions) : promiseProxyFactory(proxyConditions))(rp);
 	}
 	return proxy;
     }
@@ -316,7 +334,7 @@ function createSendgridMailMock(proxyConditions) {
 	    if (debug) console.log("In get:", obj, prop);
 	    if (prop === "send") {
 		if (!proxy) {
-		    proxy = proxyFactory(proxyConditions)(obj[prop]);
+		    proxy = promiseProxyFactory(proxyConditions)(obj[prop]);
 		}
 		return proxy;
 	    } else {
