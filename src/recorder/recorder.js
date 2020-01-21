@@ -4,10 +4,28 @@ const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
 const util = require('util');
 const aws = require('aws-sdk');
+const serialize = require('serialize-javascript');
+const zlib = require('zlib');
+const gzip = util.promisify(zlip.gzip);
 
 const kinesis = new aws.Kinesis();
 
 const debug   = process.env.DEBUG_WATCHTOWER;
+
+let rnrRecording = false;
+let rawRecorder = () => {};
+let getLambdaContext = () => {};
+
+function configureRNRRecording(enable, kinesisStreamName, s3BucketName, getContext) {
+    rnrRecording = enable;
+    if (enable) {
+        rawRecorder = createRawRecorder(kinesisStreamName, s3BucketName);
+        getLambdaContext = getContext;
+    } else {
+        rawRecorder = () => {};
+        getLambdaContext = () => {};
+    }
+}
 
 function getRandString() {
     const sevenDigitID = Math.floor(Math.random() * Math.floor(9999999));
@@ -56,7 +74,7 @@ function createBatchEventPublisher(kinesisStreamName) {
         return (logEvents, lambdaContext) => {
             const params = {};
             params.StreamName = kinesisStreamName;
-            params.Records = logEvents.map(event => ({logEvent: event, 
+            params.Records = logEvents.map(event => ({logEvent: event,
                                                       timestamp: Date.now(),
                                                       invocationID: lambdaContext.awsRequestId}))
                 .map(data => ({Data: JSON.stringify(data),
@@ -73,7 +91,22 @@ function createBatchEventPublisher(kinesisStreamName) {
     }
 }
 
+function createRawRecorder( kinesisStreamName, s3BucketName ) {
+    return (logEvent) => {
+        const now = Date.now();
+        const lambdaContext = getLambdaContext();
 
+        promisesToWaitFor.push(
+            Promise.resolve( () => serialize({now, logEvent}, {unsafe: true}) )
+                .then( ser => gzip(ser) )
+                .then( zip => kinesis.putRecords({
+                    StreamName: kinesisStreamName,
+                    PartitionKey: lambdaContext.awsRequestId,
+                    Data: zip,
+                }).promise())
+        );
+    };
+}
 
 function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext, useCallbacks = false) {
 
@@ -152,19 +185,33 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
  *  [
  *   {cond: () -> Bool, opInSucc: () -> () -> ()}
  *  ]
+ *
+ * We call the operation of the first condition matched.
  */
 function awsPromiseProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
+
+            let call;
+
 	    for (const cond of conditions) {
 		if (cond.cond(target, thisArg, argumentsList)) {
 		    if (debug) console.log("Running in aws-sdk 'promise' mode");
-		    return target.apply(thisArg, argumentsList)
+		    call = target.apply(thisArg, argumentsList)
 			.on('success', (...resp) => {if (debug) console.log(`Running from within aws-sdk callback (pseudo-promise). resp is ${util.inspect(resp)}`)})
 			.on('success', cond.opInSucc(argumentsList));
+
+                    break;
 		}
 	    }
-	    return target.apply(thisArg, argumentsList);
+
+            if (!call)
+                call = target.apply(thisArg, argumentsList);
+
+            if (rnrRecording)
+                call.on('complete', (resp) => rawRecorder(resp));
+
+            return call;
         },
     });
 }
@@ -172,15 +219,27 @@ function awsPromiseProxyFactory(conditions) {
 function promiseProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
+
+            let call;
+
 	    for (const cond of conditions) {
 		if (cond.cond(target, thisArg, argumentsList)) {
 		    if (debug) console.log("Running in promise mode");
-		    return target.apply(thisArg, argumentsList)
+		    call = target.apply(thisArg, argumentsList)
 			.then(resp => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`); return resp;})
 			.then(cond.opInSucc(argumentsList));
+
+                    break;
 		}
 	    }
-	    return target.apply(thisArg, argumentsList);
+
+            if (!call)
+                call = target.apply(thisArg, argumentsList);
+
+            if (rnrRecording)
+                call = call.then(resp => {rawRecorder(resp); return resp;});
+
+            return call;
         },
     });
 }
