@@ -92,12 +92,14 @@ function createBatchEventPublisher(kinesisStreamName) {
 }
 
 function createRawRecorder( kinesisStreamName, s3BucketName ) {
-    return (logEvent) => {
+    return (data, name = '', isJSON = false) => {
         const now = Date.now();
         const lambdaContext = getLambdaContext();
 
+        const executionID = lambdaContext.getExecutionID(); // TODO
+
         promisesToWaitFor.push(
-            Promise.resolve( () => serialize({now, logEvent}, {unsafe: true}) )
+            Promise.resolve( () => serialize({now, name, logEvent}, {unsafe: true, isJSON}) )
                 .then( ser => gzip(ser) )
                 .then( zip => kinesis.putRecords({
                     StreamName: kinesisStreamName,
@@ -107,6 +109,10 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
         );
     };
 }
+
+function registerEventContext(event, context) {
+
+};
 
 function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock, runLocally, updateContext, useCallbacks = false) {
 
@@ -135,6 +141,9 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
     if (!useCallbacks) {
         return async (event, context) => {
+            if (rnrRecording) {
+
+            }
             promisesToWaitFor = [];
             updateContext(originalLambdaHandler, event, context);
             const retVal = await vmExports[originalLambdaHandler](event, context);
@@ -143,6 +152,9 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
         }
     } else {
 	return (event, context, callback) => {
+            if (rnrRecording) {
+
+            }
 	    promisesToWaitFor = [];
 	    updateContext(originalLambdaHandler, event, context);
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
@@ -861,7 +873,7 @@ function createNodeFetchMock(proxyConditions, reallyMock = false) {
             return target.apply(thisArg, argumentsList);
             // recordWrapperPromise(fetch, "node-fetch.fetch")
         }
-    };
+    });
 }
 
 
