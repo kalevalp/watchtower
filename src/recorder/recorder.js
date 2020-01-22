@@ -790,7 +790,7 @@ function createAWSSDKMock() {
     });
 }
 
-function createNodemailerMock() {
+function createNodemailerMock(proxyConditions, reallyMock = false) {
     const nm = require('nodemailer');
 
     return new proxy(nm, {
@@ -819,16 +819,19 @@ function createNodemailerMock() {
         }})
 }
 
-function createGotMock() {
+function createGotMock(proxyConditions, reallyMock = false) {
     const got = require('got');
+    let proxy;
 
     return new Proxy(got, {
-        get: function (object, prop) {
+        get: function (obj, prop) {
             switch (prop) {
             case 'get':
-                // return recordWrapperPromise(got.get, "got.get");
-                return obj[prop];
-                break
+                if (!proxy) {
+                    proxy = promiseProxyFactory(proxyConditions)(obj[prop]);
+	        }
+
+	        return proxy;
             default:
                 return obj[prop];
             }
@@ -836,11 +839,25 @@ function createGotMock() {
     });
 }
 
-function createNodeFetchMock() {
+function createNodeFetchMock(proxyConditions, reallyMock = false) {
     const nf = require('node-fetch');
+    let proxy;
+
+    if (!proxy) {
+        proxy = promiseProxyFactory(proxyConditions)(obj[prop]);
+    }
+
+    return proxy;
+
 
     return new Proxy (nf, {
 	apply: function (target, thisArg, argumentsList) {
+                            if (!proxy) {
+                    proxy = promiseProxyFactory(proxyConditions)(obj[prop]);
+	        }
+
+	        return proxy;
+
             return target.apply(thisArg, argumentsList);
             // recordWrapperPromise(fetch, "node-fetch.fetch")
         }
