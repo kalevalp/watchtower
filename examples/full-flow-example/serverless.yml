@@ -5,7 +5,8 @@ provider:
   runtime: nodejs8.10
   region: eu-west-1
   stage: test
-
+  environment:
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1 # Watchtower optimization - reuse http connections
 functions:
   hello:
     handler: handler-wrapper.hello
