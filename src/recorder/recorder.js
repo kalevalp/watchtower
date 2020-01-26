@@ -9,12 +9,15 @@ const zlib = require('zlib');
 const gzip = util.promisify(zlip.gzip);
 
 const kinesis = new aws.Kinesis();
+const s3 = new aws.S3();
 
 const debug   = process.env.DEBUG_WATCHTOWER;
 
 let rnrRecording = false;
 let rawRecorder = () => {};
 let getLambdaContext = () => {};
+let operationIndex = 0;
+let operationTotalOrder = [];
 
 function configureRNRRecording(enable, kinesisStreamName, s3BucketName, getContext) {
     rnrRecording = enable;
@@ -92,20 +95,24 @@ function createBatchEventPublisher(kinesisStreamName) {
 }
 
 function createRawRecorder( kinesisStreamName, s3BucketName ) {
-    return (data, name = '', isJSON = false) => {
+    return (data, idx, isJSON = false) => {
         const now = Date.now();
         const lambdaContext = getLambdaContext();
 
-        const executionID = lambdaContext.getExecutionID(); // TODO
-
         promisesToWaitFor.push(
-            Promise.resolve( () => serialize({now, name, logEvent}, {unsafe: true, isJSON}) )
+            Promise.resolve( () => serialize({now, idx, data}, {unsafe: true, isJSON}) )
                 .then( ser => gzip(ser) )
-                .then( zip => kinesis.putRecords({
-                    StreamName: kinesisStreamName,
-                    PartitionKey: lambdaContext.awsRequestId,
-                    Data: zip,
+                // .then( zip => kinesis.putRecords({
+                //     StreamName: kinesisStreamName,
+                //     PartitionKey: lambdaContext.awsRequestId,
+                //     Data: zip,
+                // }).promise())
+                .then( zip => s3.putObject({
+                    Bucket: s3BucketName,
+                    Body: zip,
+                    Key: `${lambdaContext.awsRequestId}/rnr-event-${idx}`,
                 }).promise())
+
         );
     };
 }
@@ -141,22 +148,36 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
     if (!useCallbacks) {
         return async (event, context) => {
-            if (rnrRecording) {
-
-            }
             promisesToWaitFor = [];
             updateContext(originalLambdaHandler, event, context);
+
+            // Setting a convention - recording with index 0 is the event and context of the function
+            if (rnrRecording) {
+                const opIdx = operationIndex++;
+                assert(opIdx === 0);
+
+                // TODO - at the moment not recording context.getRemainingTimeInMillis()
+                rawRecorder({event, context}, opIdx, true);
+            }
+
             const retVal = await vmExports[originalLambdaHandler](event, context);
+
             return Promise.all(promisesToWaitFor)
                 .then(() => Promise.resolve(retVal));
         }
     } else {
 	return (event, context, callback) => {
-            if (rnrRecording) {
-
-            }
 	    promisesToWaitFor = [];
 	    updateContext(originalLambdaHandler, event, context);
+
+            if (rnrRecording) {
+                const opIdx = operationIndex++;
+                assert(opIdx === 0);
+
+                // TODO - at the moment not recording context.getRemainingTimeInMillis()
+                rawRecorder({event, context}, opIdx, true);
+            }
+
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
 		return Promise.all(promisesToWaitFor)
 		    .then(() => callback(err, success),
@@ -220,8 +241,11 @@ function awsPromiseProxyFactory(conditions) {
             if (!call)
                 call = target.apply(thisArg, argumentsList);
 
+            const opIdx = operationIndex++;
+            operationTotalOrder.push({type: "CALL", idx: opIdx});
+
             if (rnrRecording)
-                call.on('complete', (resp) => rawRecorder(resp));
+                call.on('complete', (resp) => {operationTotalOrder.push({type: "RESPONSE", idx: opIdx}); return rawRecorder(resp, opIdx)}); 
 
             return call;
         },
@@ -248,14 +272,18 @@ function promiseProxyFactory(conditions) {
             if (!call)
                 call = target.apply(thisArg, argumentsList);
 
+            const opIdx = operationIndex++;
+            operationTotalOrder.push({type: "CALL", idx: opIdx});
+
             if (rnrRecording)
-                call = call.then(resp => {rawRecorder(resp); return resp;});
+                call = call.then(resp => {operationTotalOrder.push({type: "RESPONSE", idx: opIdx}); rawRecorder(resp, opIdx); return resp;});
 
             return call;
         },
     });
 }
 
+// TODO - implement rnr for callback based methods
 function cbackProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
