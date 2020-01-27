@@ -99,21 +99,23 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
         const now = Date.now();
         const lambdaContext = getLambdaContext();
 
-        promisesToWaitFor.push(
-            Promise.resolve( () => serialize({now, idx, data}, {unsafe: true, isJSON}) )
-                .then( ser => gzip(ser) )
-                // .then( zip => kinesis.putRecords({
-                //     StreamName: kinesisStreamName,
-                //     PartitionKey: lambdaContext.awsRequestId,
-                //     Data: zip,
-                // }).promise())
-                .then( zip => s3.putObject({
-                    Bucket: s3BucketName,
-                    Body: zip,
-                    Key: `${lambdaContext.awsRequestId}/rnr-event-${idx}`,
-                }).promise())
+        const putPromise = Promise.resolve( () => serialize({now, idx, data}, {unsafe: true, isJSON}) )
+              .then( ser => gzip(ser) )
+        // .then( zip => kinesis.putRecords({
+        //     StreamName: kinesisStreamName,
+        //     PartitionKey: lambdaContext.awsRequestId,
+        //     Data: zip,
+        // }).promise())
+              .then( zip => s3.putObject({
+                  Bucket: s3BucketName,
+                  Body: zip,
+                  Key: `${lambdaContext.awsRequestId}/rnr-event-${idx}`,
+              }).promise());
 
-        );
+        promisesToWaitFor.push(putPromise);
+
+        return putPromise;
+
     };
 }
 
@@ -149,6 +151,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
     if (!useCallbacks) {
         return async (event, context) => {
             promisesToWaitFor = [];
+            operationTotalOrder = [];
+
             updateContext(originalLambdaHandler, event, context);
 
             // Setting a convention - recording with index 0 is the event and context of the function
@@ -163,11 +167,14 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             const retVal = await vmExports[originalLambdaHandler](event, context);
 
             return Promise.all(promisesToWaitFor)
+                .then(() => rnrRecording ? rawRecorder(operationTotalOrder,'opTO',true) : true)
                 .then(() => Promise.resolve(retVal));
         }
     } else {
 	return (event, context, callback) => {
 	    promisesToWaitFor = [];
+            operationTotalOrder = [];
+
 	    updateContext(originalLambdaHandler, event, context);
 
             if (rnrRecording) {
@@ -180,6 +187,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
 		return Promise.all(promisesToWaitFor)
+                    .then(() => rnrRecording ? rawRecorder(operationTotalOrder,'opTO',true) : true)
 		    .then(() => callback(err, success),
 			  (errVal) => callback(errVal));
 	    });
@@ -245,7 +253,7 @@ function awsPromiseProxyFactory(conditions) {
             operationTotalOrder.push({type: "CALL", idx: opIdx});
 
             if (rnrRecording)
-                call.on('complete', (resp) => {operationTotalOrder.push({type: "RESPONSE", idx: opIdx}); return rawRecorder(resp, opIdx)}); 
+                call.on('complete', (resp) => {operationTotalOrder.push({type: "RESPONSE", idx: opIdx}); return rawRecorder(resp, opIdx)});
 
             return call;
         },
