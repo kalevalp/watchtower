@@ -1,0 +1,12 @@
+const recorder = require('watchtower-recorder');
+const rnrBucket = process.env.WATCHTOWER_RNR_S3_BUCKET;
+
+let context, lambdaExecutionContext, lambdaInputEvent;
+function updateContext(name, event, lambdaContext) { context = name; lambdaExecutionContext = lambdaContext; lambdaInputEvent = event; }
+
+recorder.configureRNRRecording(/*enable*/ true, /*kinesisStreamName*/ 'notActuallyInUse', /*s3BucketName*/ rnrBucket, /*getContext*/ () => lambdaExecutionContext )
+
+const mock = {};
+
+module.exports.consume = recorder.createRecordingHandler('handler.js', 'consume' , mock, updateContext, true);
+module.exports.produce = recorder.createRecordingHandler('handler.js', 'produce' , mock, updateContext, true);

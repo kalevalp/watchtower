@@ -8,6 +8,8 @@ provider:
   environment:
     LOREM_DYNAMO_TABLE:
       Ref: LoremTable
+    WATCHTOWER_RNR_S3_BUCKET:
+      Ref: WTRNRS3Bucket
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -19,24 +21,36 @@ provider:
         - dynamodb:DeleteItem
       Resource:
         Fn::GetAtt: [LoremTable, Arn]
-
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:ListBucket
+        - s3:GetObject
+      Resource:
+        Fn::GetAtt: [WTRNRS3Bucket, Arn]
 package:
   exclude:
     - '*~'
+
+custom:
+  # handlerFilePostfix: '-wrapper'
+  # handlerFilePostfix: ''
+  handlerFilePostfix: ${env:WT_RUN_NO_RECORDING, '-wrapper'}
+
 
 functions:
   produce:
     handler: handler.produce
     events:
       - http:
-          path: lorem/produce
+          path: lorem${self:custom.handlerFilePostfix}/produce
           method: get
 
   consume:
     handler: handler.consume
     events:
       - http:
-          path: lorem/consume
+          path: lorem${self:custom.handlerFilePostfix}/consume
           method: get
 
 resources:
@@ -52,3 +66,4 @@ resources:
           KeyType: HASH
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:service}-${self:provider.stage}-LoremTable
+    WTRNRS3Bucket: ${file(watchtower/rnrResources.yml):Resources.WTRNRS3Bucket}
