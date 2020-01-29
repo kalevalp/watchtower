@@ -12,7 +12,7 @@ const gzip = util.promisify(zlib.gzip);
 const kinesis = new aws.Kinesis();
 const s3 = new aws.S3();
 
-const debug   = process.env.DEBUG_WATCHTOWER;
+const debug = process.env.DEBUG_WATCHTOWER;
 
 let rnrRecording = false;
 let rawRecorder = () => {};
@@ -21,6 +21,8 @@ let operationIndex = 0;
 let operationTotalOrder = [];
 
 function configureRNRRecording(enable, kinesisStreamName, s3BucketName, getContext) {
+    if (debug) console.log(`Configuring rnr recording. enable: ${enable}, kinesisStreamName: ${kinesisStreamName}, s3BucketName: ${s3BucketName}.`)
+
     rnrRecording = enable;
     if (enable) {
         rawRecorder = createRawRecorder(kinesisStreamName, s3BucketName);
@@ -96,9 +98,13 @@ function createBatchEventPublisher(kinesisStreamName) {
 }
 
 function createRawRecorder( kinesisStreamName, s3BucketName ) {
+    if (debug) console.log(`Creating an rnr recorder. kinesisStreamName: ${kinesisStreamName}, s3BucketName: ${s3BucketName}.`);
     return (data, idx, isJSON = false) => {
+
         const now = Date.now();
         const lambdaContext = getLambdaContext();
+
+        if (debug) console.log(`Recording raw data: ${data}; idx: ${idx}; isJSON: ${isJSON}.`);
 
         const putPromise = Promise.resolve( () => serialize({now, idx, data}, {unsafe: true, isJSON}) )
               .then( ser => gzip(ser) )
@@ -107,11 +113,13 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
         //     PartitionKey: lambdaContext.awsRequestId,
         //     Data: zip,
         // }).promise())
-              .then( zip => s3.putObject({
+              .then(zip => ({
                   Bucket: s3BucketName,
                   Body: zip,
                   Key: `${lambdaContext.awsRequestId}/rnr-event-${idx}`,
-              }).promise());
+              }))
+              .then( params => {if (debug) console.log(JSON.stringify(params)); return params;} )
+              .then( params => s3.putObject(params).promise() );
 
         promisesToWaitFor.push(putPromise);
 
