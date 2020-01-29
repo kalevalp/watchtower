@@ -3,6 +3,10 @@ const rnrBucket = process.env.WATCHTOWER_RNR_S3_BUCKET;
 
 const aws = require('aws-sdk');
 
+const debug = process.env.DEBUG_WATCHTOWER
+
+if (debug) aws.config.logger = console;
+
 let context, lambdaExecutionContext, lambdaInputEvent;
 function updateContext(name, event, lambdaContext) { context = name; lambdaExecutionContext = lambdaContext; lambdaInputEvent = event; }
 
