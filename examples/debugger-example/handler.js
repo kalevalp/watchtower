@@ -35,7 +35,7 @@ function wrap(data) {
 
 async function produce(event, context) {
     const paraCount = Math.floor(Math.random() * 50);
-    console.log(paraCount);
+
     const text = lorem.generateParagraphs(paraCount);
 
     const hash = crypto.createHash('sha256');
