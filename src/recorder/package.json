@@ -1,6 +1,6 @@
 {
   "name": "watchtower-recorder",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "description": "Module in charge of recording external function interactions.",
   "main": "recorder.js",
   "scripts": {
@@ -12,11 +12,12 @@
   ],
   "license": "ISC",
   "dependencies": {
+    "serialize-javascript": "^2.1.2",
     "vm2": "^3.6.4"
   },
   "devDependencies": {
     "@sendgrid/mail": "^6.4.0",
-    "aws-sdk": "^2.543.0",
+    "aws-sdk": "^2.610.0",
     "request-promise": "^4.2.5",
     "twit": "^2.2.11"
   }
