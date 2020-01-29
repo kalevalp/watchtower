@@ -5,8 +5,10 @@ const fs = require("fs");
 const util = require('util');
 const aws = require('aws-sdk');
 const serialize = require('serialize-javascript');
+const assert = require('assert');
 const zlib = require('zlib');
 const gzip = util.promisify(zlib.gzip);
+
 
 const kinesis = new aws.Kinesis();
 const s3 = new aws.S3();
