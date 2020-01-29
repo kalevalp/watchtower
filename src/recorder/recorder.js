@@ -5,7 +5,6 @@ const fs = require("fs");
 const util = require('util');
 const aws = require('aws-sdk');
 const serialize = require('serialize-javascript');
-const assert = require('assert');
 const zlib = require('zlib');
 const gzip = util.promisify(zlib.gzip);
 
@@ -159,8 +158,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
             // Setting a convention - recording with index 0 is the event and context of the function
             if (rnrRecording) {
+                operationIndex = 0;
                 const opIdx = operationIndex++;
-                assert(opIdx === 0);
 
                 // TODO - at the moment not recording context.getRemainingTimeInMillis()
                 rawRecorder({event, context}, opIdx, true);
@@ -180,8 +179,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 	    updateContext(originalLambdaHandler, event, context);
 
             if (rnrRecording) {
+                operationIndex = 0;
                 const opIdx = operationIndex++;
-                assert(opIdx === 0);
 
                 // TODO - at the moment not recording context.getRemainingTimeInMillis()
                 rawRecorder({event, context}, opIdx, true);
