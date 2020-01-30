@@ -4,7 +4,7 @@ const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
 const util = require('util');
 const aws = require('aws-sdk');
-const serialize = require('serialize-javascript');
+const serialize = require('serialize-javascript-w-cycles');
 const zlib = require('zlib');
 const gzip = util.promisify(zlib.gzip);
 
@@ -167,7 +167,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             // Setting a convention - recording with index 0 is the event and context of the function
             if (rnrRecording) {
                 operationIndex = 0;
-                const opIdx = operationIndex++;
+                const opIdx = 'event-context';
 
                 // TODO - at the moment not recording context.getRemainingTimeInMillis()
                 rawRecorder({event, context}, opIdx, true);
@@ -176,7 +176,9 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             const retVal = await vmExports[originalLambdaHandler](event, context);
 
             return Promise.all(promisesToWaitFor)
+                .then(() => {if (debug) console.log(`Finished waiting for promises. Recording opTO next. rnrRecording: ${rnrRecording}, operationTotalOrder: ${operationTotalOrder}.`)})
                 .then(() => rnrRecording ? rawRecorder(operationTotalOrder,'opTO',true) : true)
+                .then(() => {if (debug) console.log(`Finished recording opTO. Returning next.`)})
                 .then(() => Promise.resolve(retVal));
         }
     } else {
@@ -188,7 +190,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
             if (rnrRecording) {
                 operationIndex = 0;
-                const opIdx = operationIndex++;
+                const opIdx = 'event-context';
 
                 // TODO - at the moment not recording context.getRemainingTimeInMillis()
                 rawRecorder({event, context}, opIdx, true);
