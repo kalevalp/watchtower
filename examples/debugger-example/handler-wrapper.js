@@ -13,8 +13,8 @@ function updateContext(name, event, lambdaContext) { context = name; lambdaExecu
 recorder.configureRNRRecording(/*enable*/ true, /*kinesisStreamName*/ 'notActuallyInUse', /*s3BucketName*/ rnrBucket, /*getContext*/ () => lambdaExecutionContext )
 
 const mock = {
-    'aws-sdk': aws
+    'aws-sdk': recorder.createDDBDocClientMock(),
 };
 
-module.exports.consume = recorder.createRecordingHandler('handler.js', 'consume' , mock, true, updateContext, true);
-module.exports.produce = recorder.createRecordingHandler('handler.js', 'produce' , mock, true, updateContext, true);
+module.exports.consume = recorder.createRecordingHandler('handler.js', 'consume' , mock, true, updateContext, false);
+module.exports.produce = recorder.createRecordingHandler('handler.js', 'produce' , mock, true, updateContext, false);
