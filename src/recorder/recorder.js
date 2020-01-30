@@ -244,16 +244,18 @@ function awsPromiseProxyFactory(conditions) {
 
             let call;
 
-	    for (const cond of conditions) {
-		if (cond.cond(target, thisArg, argumentsList)) {
-		    if (debug) console.log("Running in aws-sdk 'promise' mode");
-		    call = target.apply(thisArg, argumentsList)
-			.on('success', (...resp) => {if (debug) console.log(`Running from within aws-sdk callback (pseudo-promise). resp is ${util.inspect(resp)}`)})
-			.on('success', cond.opInSucc(argumentsList));
+            if (conditions) {
+	        for (const cond of conditions) {
+		    if (cond.cond(target, thisArg, argumentsList)) {
+		        if (debug) console.log("Running in aws-sdk 'promise' mode");
+		        call = target.apply(thisArg, argumentsList)
+			    .on('success', (...resp) => {if (debug) console.log(`Running from within aws-sdk callback (pseudo-promise). resp is ${util.inspect(resp)}`)})
+			    .on('success', cond.opInSucc(argumentsList));
 
-                    break;
-		}
-	    }
+                        break;
+		    }
+	        }
+            }
 
             if (!call)
                 call = target.apply(thisArg, argumentsList);
@@ -274,17 +276,18 @@ function promiseProxyFactory(conditions) {
         apply: function (target, thisArg, argumentsList) {
 
             let call;
+            if (conditions) {
+	        for (const cond of conditions) {
+		    if (cond.cond(target, thisArg, argumentsList)) {
+		        if (debug) console.log("Running in promise mode");
+		        call = target.apply(thisArg, argumentsList)
+			    .then(resp => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`); return resp;})
+			    .then(cond.opInSucc(argumentsList));
 
-	    for (const cond of conditions) {
-		if (cond.cond(target, thisArg, argumentsList)) {
-		    if (debug) console.log("Running in promise mode");
-		    call = target.apply(thisArg, argumentsList)
-			.then(resp => {if (debug) console.log(`Running from within promise. resp is ${util.inspect(resp)}`); return resp;})
-			.then(cond.opInSucc(argumentsList));
-
-                    break;
-		}
-	    }
+                        break;
+		    }
+	        }
+            }
 
             if (!call)
                 call = target.apply(thisArg, argumentsList);
@@ -304,31 +307,33 @@ function promiseProxyFactory(conditions) {
 function cbackProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
-	    for (const cond of conditions) {
-		if (cond.cond(target, thisArg, argumentsList)) {
-		    if (debug) console.log("Running in callback mode");
-		    // Assume last element of argumentsList is the callback function
-		    const cbackIdx = argumentsList.length - 1;
-		    const cbackFunc = argumentsList[cbackIdx];
+            if (conditions) {
+	        for (const cond of conditions) {
+		    if (cond.cond(target, thisArg, argumentsList)) {
+		        if (debug) console.log("Running in callback mode");
+		        // Assume last element of argumentsList is the callback function
+		        const cbackIdx = argumentsList.length - 1;
+		        const cbackFunc = argumentsList[cbackIdx];
 
-		    if (typeof cbackFunc === 'function') {
-			if (debug) console.log("Last arg in call is a function, assuming it is a callback and changing the callback function");
-			argumentsList[cbackIdx] = (...args) => {
-			    if (debug) console.log(`Running from within modified callback. args is: ${JSON.stringify(args)}`);
-			    // assume standard callback format - args[0] === null/undefined => successful call
-			    if (!args[0]) {
-				if (debug) console.log("Calling the op.");
-				cond.opInSucc(argumentsList)(...args);
-				if (debug) console.log("Finished calling the op.");
+		        if (typeof cbackFunc === 'function') {
+			    if (debug) console.log("Last arg in call is a function, assuming it is a callback and changing the callback function");
+			    argumentsList[cbackIdx] = (...args) => {
+			        if (debug) console.log(`Running from within modified callback. args is: ${JSON.stringify(args)}`);
+			        // assume standard callback format - args[0] === null/undefined => successful call
+			        if (!args[0]) {
+				    if (debug) console.log("Calling the op.");
+				    cond.opInSucc(argumentsList)(...args);
+				    if (debug) console.log("Finished calling the op.");
+			        }
+			        if (debug) console.log("Calling the original callback");
+			        return cbackFunc(...args);
 			    }
-			    if (debug) console.log("Calling the original callback");
-			    return cbackFunc(...args);
-			}
-		    } // Otherwise, the callback here is not as expected. Falling back to doing nothing.
+		        } // Otherwise, the callback here is not as expected. Falling back to doing nothing.
 
-		    return target.apply(thisArg, argumentsList);
-		}
-	    }
+		        return target.apply(thisArg, argumentsList);
+		    }
+	        }
+            }
 	    return target.apply(thisArg, argumentsList);
         },
     });
