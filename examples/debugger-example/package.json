@@ -10,7 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "lorem-ipsum": "^2.0.3",
-    "watchtower-recorder": "^2.0.10"
+    "watchtower-recorder": "^2.0.11"
   },
   "devDependencies": {
     "aws-sdk": "^2.610.0"
