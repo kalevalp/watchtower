@@ -1,6 +1,6 @@
 {
   "name": "watchtower-recorder",
-  "version": "2.0.14",
+  "version": "2.0.15",
   "description": "Module in charge of recording external function interactions.",
   "main": "recorder.js",
   "scripts": {
@@ -12,7 +12,6 @@
   ],
   "license": "ISC",
   "dependencies": {
-    "serialize-javascript-w-cycles": "^1.0.1",
     "vm2": "^3.6.4"
   },
   "devDependencies": {
