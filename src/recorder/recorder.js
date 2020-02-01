@@ -4,9 +4,9 @@ const {NodeVM,VMScript} = require("vm2");
 const fs = require("fs");
 const util = require('util');
 const aws = require('aws-sdk');
-const serialize = require('serialize-javascript-w-cycles');
-const zlib = require('zlib');
-const gzip = util.promisify(zlib.gzip);
+// const serialize = require('serialize-javascript-w-cycles');
+// const zlib = require('zlib');
+// const gzip = util.promisify(zlib.gzip);
 
 
 const kinesis = new aws.Kinesis();
@@ -97,6 +97,29 @@ function createBatchEventPublisher(kinesisStreamName) {
     }
 }
 
+function cycleExists(elem) {
+    const stack = [elem];
+    const seen = [elem];
+
+    while (stack.length > 0) {
+        const curr = stack.pop();
+        // TODO: for .. in loop might not cover all required properties
+        for (item in curr) {
+            if (typeof item === 'object') {
+                if (item === elem)
+                    return true;
+                if (!seen.includes(item)) {
+                    seen.push(item);
+                    stack.push(item);
+                }
+            }
+        };
+    };
+
+    return false;
+
+};
+
 function createRawRecorder( kinesisStreamName, s3BucketName ) {
     if (debug) console.log(`Creating an rnr recorder. kinesisStreamName: ${kinesisStreamName}, s3BucketName: ${s3BucketName}.`);
     return (data, idx, isJSON = false) => {
@@ -104,15 +127,39 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
         const now = Date.now();
         const lambdaContext = getLambdaContext();
 
-        if (debug) console.log(`Recording raw data: ${data}; idx: ${idx}; isJSON: ${isJSON}.`);
+        if (debug) console.log(`Recording raw data: ${util.inspect(data)}; idx: ${idx}; isJSON: ${isJSON}.`);
 
-        const putPromise = Promise.resolve( () => serialize({now, idx, data}, {unsafe: true, isJSON}) )
-              .then( ser => gzip(ser) )
+
+        const seen = [];
+        const replacer = (key, value) => {
+            const orig = this[key];
+
+            if (typeof orig === 'object') {
+                if (seen.includes(orig)) {
+                    // Need to actually check for a cycle, as opposed to simply multiple instances of the same reference.
+
+                    if (cycleExists(orig)) {
+                        return 'Cyclic-refernce';
+                    }
+
+                } else {
+                    seen.push(orig);
+                }
+            }
+        }
+
+        const beforeStringify = Date.now();
+        const datastr = JSON.stringify({now, idx, data}, replacer)
+        if (debug) console.log(`stringify time was ${Date.now()-beforeStringify}`);
+
+        const putPromise = Promise.resolve( serialize({now, idx, data}, {unsafe: true, isJSON}) )
+              // .then( ser => gzip(ser) )
         // .then( zip => kinesis.putRecords({
         //     StreamName: kinesisStreamName,
         //     PartitionKey: lambdaContext.awsRequestId,
         //     Data: zip,
         // }).promise())
+              .then (ser => {if (debug) console.log(`Recording: ${ser}.`); return ser;})
               .then(zip => ({
                   Bucket: s3BucketName,
                   Body: zip,
