@@ -55,20 +55,31 @@ async function replayAsyncHandler(executionID, handler, s3BucketName) {
 
     // TODO - handle history larger than 1000 objects
 
-    const hist = await Promise.all((await Promise.all(history.Contents
-                                                      .map(item => item.Key)
-                                                      .map(async Key => (
-                                                          {
-                                                              key: Key,
-                                                              item: await s3.getObject({Key, Bucket: s3BucketName}).promise()
-                                                          }))))
-                                   .map(async ({key, item}) => (
+    // const hist = await Promise.all((await Promise.all(history.Contents
+    //                                                   .map(item => item.Key)
+    //                                                   .map(async Key => (
+    //                                                       {
+    //                                                           key: Key,
+    //                                                           item: await s3.getObject({Key, Bucket: s3BucketName}).promise()
+    //                                                       }))))
+    //                                .map(async ({key, item}) => (
+    //                                    {
+    //                                        key,
+    //                                        item: (await gunzip(item.Body)).toString()
+    //                                    })))
+
+
+    const hist = await Promise.all(history.Contents
+                                   .map(item => item.Key)
+                                   .map(async Key => (
                                        {
-                                           key,
-                                           item: (await gunzip(item.Body)).toString()
+                                           key: Key,
+                                           item: ((await s3.getObject({Key, Bucket: s3BucketName}).promise()).Body.toString())
                                        })))
 
-    // console.log(hist);
+    debugger;
+
+    console.log(hist);
 
     // TODO
 }
