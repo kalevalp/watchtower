@@ -16,6 +16,8 @@ const debug = process.env.DEBUG_WATCHTOWER;
 
 let rnrRecording = false;
 let rawRecorder = () => {};
+
+// 'execContext', 'execEvent', 'callContext'
 let getLambdaContext = () => {};
 let operationIndex = 0;
 let operationTotalOrder = [];
@@ -125,7 +127,7 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
     return (data, idx, isJSON = false) => {
 
         const now = Date.now();
-        const lambdaContext = getLambdaContext();
+        const lambdaContext = getLambdaContext('execContext');
 
         if (debug) console.log(`Recording raw data: ${util.inspect(data)}; idx: ${idx}; isJSON: ${isJSON}.`);
 
@@ -211,12 +213,10 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
             updateContext(originalLambdaHandler, event, context);
 
-            // Setting a convention - recording with index 0 is the event and context of the function
             if (rnrRecording) {
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
-                // TODO - at the moment not recording context.getRemainingTimeInMillis()
                 rawRecorder({event, context}, opIdx, true);
             }
 
@@ -239,7 +239,6 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
-                // TODO - at the moment not recording context.getRemainingTimeInMillis()
                 rawRecorder({event, context}, opIdx, true);
             }
 
@@ -287,9 +286,12 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
  *
  * We call the operation of the first condition matched.
  */
-function awsPromiseProxyFactory(conditions) {
+function awsPromiseProxyFactory(conditions, proxyContext) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
+
+            if (rnrRecording)
+                rawRecorder()
 
             let call;
 
@@ -320,7 +322,7 @@ function awsPromiseProxyFactory(conditions) {
     });
 }
 
-function promiseProxyFactory(conditions) {
+function promiseProxyFactory(conditions, proxyContext) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
 
@@ -353,7 +355,7 @@ function promiseProxyFactory(conditions) {
 }
 
 // TODO - implement rnr for callback based methods
-function cbackProxyFactory(conditions) {
+function cbackProxyFactory(conditions, proxyContext) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
             if (conditions) {
@@ -394,10 +396,10 @@ function createDDBDocClientMock ( getProxyConditions,
 				  queryProxyConditions,
 				  useCallbacks = false ) {
 
-    const proxies = [{name: 'get',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(getProxyConditions) : awsPromiseProxyFactory(getProxyConditions)},
-		     {name: 'put',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(putProxyConditions) : awsPromiseProxyFactory(putProxyConditions)},
-                     {name: 'delete', proxy: undefined, producer: useCallbacks ? cbackProxyFactory(deleteProxyConditions) : awsPromiseProxyFactory(deleteProxyConditions)},
-                     {name: 'query',  proxy: undefined, producer: useCallbacks ? cbackProxyFactory(queryProxyConditions) : awsPromiseProxyFactory(queryProxyConditions)},
+    const proxies = [{name: 'get',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(getProxyConditions, 'get') : awsPromiseProxyFactory(getProxyConditions, 'get')},
+		     {name: 'put',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(putProxyConditions, 'put') : awsPromiseProxyFactory(putProxyConditions, 'put')},
+                     {name: 'delete', proxy: undefined, producer: useCallbacks ? cbackProxyFactory(deleteProxyConditions, 'delete') : awsPromiseProxyFactory(deleteProxyConditions, 'delete')},
+                     {name: 'query',  proxy: undefined, producer: useCallbacks ? cbackProxyFactory(queryProxyConditions, 'query') : awsPromiseProxyFactory(queryProxyConditions, 'query')},
 		    ];
 
     return new Proxy(aws, {
