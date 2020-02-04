@@ -10,7 +10,21 @@ if (debug) aws.config.logger = console;
 let context, lambdaExecutionContext, lambdaInputEvent;
 function updateContext(name, event, lambdaContext) { context = name; lambdaExecutionContext = lambdaContext; lambdaInputEvent = event; }
 
-recorder.configureRNRRecording(/*enable*/ true, /*kinesisStreamName*/ 'notActuallyInUse', /*s3BucketName*/ rnrBucket, /*getContext*/ () => lambdaExecutionContext )
+recorder.configureRNRRecording(
+    /*enable*/ true,
+    /*kinesisStreamName*/ 'notActuallyInUse',
+    /*s3BucketName*/ rnrBucket,
+    /*getContext*/
+    (key) => {
+        switch(key) {
+        case 'execContext' :
+            return lambdaExecutionContext;
+        case 'execEvent' :
+            return lambdaInputEvent;
+        case 'callContext' :
+            return context;
+        }
+    });
 
 const mock = {
     'aws-sdk': recorder.createDDBDocClientMock(),
