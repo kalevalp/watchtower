@@ -217,14 +217,14 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
-                rawRecorder({event, context}, opIdx, true);
+                rawRecorder({event, context, handlerName: originalLambdaHandler}, opIdx, true);
             }
 
             const retVal = await vmExports[originalLambdaHandler](event, context);
 
             return Promise.all(promisesToWaitFor)
                 .then(() => {if (debug) console.log(`Finished waiting for promises. Recording opTO next. rnrRecording: ${rnrRecording}, operationTotalOrder: ${operationTotalOrder}.`)})
-                .then(() => rnrRecording ? rawRecorder(operationTotalOrder,'opTO',true) : true)
+                .then(() => rnrRecording ? rawRecorder({operationTotalOrder, handlerName: originalLambdaHandler},'opTO',true) : true)
                 .then(() => {if (debug) console.log(`Finished recording opTO. Returning next.`)})
                 .then(() => Promise.resolve(retVal));
         }
@@ -239,12 +239,12 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
-                rawRecorder({event, context}, opIdx, true);
+                rawRecorder({event, context, handlerName: originalLambdaHandler}, opIdx, true);
             }
 
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
 		return Promise.all(promisesToWaitFor)
-                    .then(() => rnrRecording ? rawRecorder(operationTotalOrder,'opTO',true) : true)
+                    .then(() => rnrRecording ? rawRecorder({operationTotalOrder, handlerName: originalLambdaHandler},'opTO',true) : true)
 		    .then(() => callback(err, success),
 			  (errVal) => callback(errVal));
 	    });
@@ -290,8 +290,10 @@ function awsPromiseProxyFactory(conditions, proxyContext) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
 
-            if (rnrRecording)
-                rawRecorder()
+            const opIdx = operationIndex++;
+
+            if (rnrecording)
+                rawRecorder({fname: target.name, argumentsList},`${opIdx}-req` )
 
             let call;
 
@@ -311,7 +313,6 @@ function awsPromiseProxyFactory(conditions, proxyContext) {
             if (!call)
                 call = target.apply(thisArg, argumentsList);
 
-            const opIdx = operationIndex++;
             operationTotalOrder.push({type: "CALL", idx: opIdx});
 
             if (rnrRecording)
