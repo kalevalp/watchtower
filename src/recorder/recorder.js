@@ -133,7 +133,11 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
 
 
         const seen = [];
-        const replacer = (key, value) => {
+        function replacer (key, value) {
+            if (!value && value !== undefined) {
+                return value;
+            }
+
             const orig = this[key];
 
             if (typeof orig === 'object') {
@@ -154,13 +158,14 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
         const datastr = JSON.stringify({now, idx, data}, replacer)
         if (debug) console.log(`stringify time was ${Date.now()-beforeStringify}`);
 
-        const putPromise = Promise.resolve( serialize({now, idx, data}, {unsafe: true, isJSON}) )
+        // const putPromise = Promise.resolve( serialize({now, idx, data}, {unsafe: true, isJSON}) )
               // .then( ser => gzip(ser) )
         // .then( zip => kinesis.putRecords({
         //     StreamName: kinesisStreamName,
         //     PartitionKey: lambdaContext.awsRequestId,
         //     Data: zip,
         // }).promise())
+        const putPromise = Promise.resolve( datastr )
               .then (ser => {if (debug) console.log(`Recording: ${ser}.`); return ser;})
               .then(zip => ({
                   Bucket: s3BucketName,
@@ -292,7 +297,7 @@ function awsPromiseProxyFactory(conditions, proxyContext) {
 
             const opIdx = operationIndex++;
 
-            if (rnrecording)
+            if (rnrRecording)
                 rawRecorder({fname: target.name, argumentsList},`${opIdx}-req` )
 
             let call;
