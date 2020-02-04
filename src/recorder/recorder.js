@@ -106,7 +106,8 @@ function cycleExists(elem) {
     while (stack.length > 0) {
         const curr = stack.pop();
         // TODO: for .. in loop might not cover all required properties
-        for (item in curr) {
+        for (let key in curr) {
+            const item = curr[key];
             if (typeof item === 'object') {
                 if (item === elem)
                     return true;
@@ -152,6 +153,8 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
                     seen.push(orig);
                 }
             }
+
+            return value;
         }
 
         const beforeStringify = Date.now();
