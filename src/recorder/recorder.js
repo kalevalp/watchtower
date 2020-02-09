@@ -214,6 +214,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
     const vmExports = vm.run(originalLambdaScript, originalLambdaPath);
 
+    const executionHistory = [];
+
     if (!useCallbacks) {
         return async (event, context) => {
             promisesToWaitFor = [];
@@ -222,10 +224,12 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
             updateContext(originalLambdaHandler, event, context);
 
             if (rnrRecording) {
+                executionHistory.push(context.awsRequestId);
+
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
-                rawRecorder({event, context, handlerName: originalLambdaHandler}, opIdx, true);
+                rawRecorder({event, context, executionHistory, handlerName: originalLambdaHandler}, opIdx, true);
             }
 
             const retVal = await vmExports[originalLambdaHandler](event, context);
@@ -244,10 +248,12 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 	    updateContext(originalLambdaHandler, event, context);
 
             if (rnrRecording) {
+                executionHistory.push(context.awsRequestId);
+
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
-                rawRecorder({event, context, handlerName: originalLambdaHandler}, opIdx, true);
+                rawRecorder({event, context, executionHistory, handlerName: originalLambdaHandler}, opIdx, true);
             }
 
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
