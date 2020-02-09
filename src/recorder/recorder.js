@@ -16,6 +16,7 @@ const debug = process.env.DEBUG_WATCHTOWER;
 
 let rnrRecording = false;
 let rawRecorder = () => {};
+let timestamper = () => {};
 
 // 'execContext', 'execEvent', 'callContext'
 let getLambdaContext = () => {};
@@ -28,9 +29,11 @@ function configureRNRRecording(enable, kinesisStreamName, s3BucketName, getConte
     rnrRecording = enable;
     if (enable) {
         rawRecorder = createRawRecorder(kinesisStreamName, s3BucketName);
+        timestamper = createExecutionTimestamper(s3BucketName);
         getLambdaContext = getContext;
     } else {
         rawRecorder = () => {};
+        timestamper = () => {};
         getLambdaContext = () => {};
     }
 }
@@ -185,6 +188,22 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
     };
 }
 
+function createExecutionTimestamper(s3BucketName) {
+    return () => {
+        const putPromise =
+              Promise.resolve( {
+                  Bucket: s3BucketName,
+                  Key: `exec--${Date.now()}--${lambdaContext.awsRequestId}`,
+              } )
+              .then( params => {if (debug) console.log(JSON.stringify(params)); return params;} )
+              .then( params => s3.putObject(params).promise() );
+
+        promisesToWaitFor.push(putPromise);
+
+        return putPromise;
+    }
+}
+
 function registerEventContext(event, context) {
 
 }
@@ -229,6 +248,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 operationIndex = 0;
                 const opIdx = 'event-context';
 
+                timestamper();
+
                 rawRecorder({event, context, executionHistory, handlerName: originalLambdaHandler}, opIdx, true);
             }
 
@@ -252,6 +273,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 
                 operationIndex = 0;
                 const opIdx = 'event-context';
+
+                timestamper();
 
                 rawRecorder({event, context, executionHistory, handlerName: originalLambdaHandler}, opIdx, true);
             }
