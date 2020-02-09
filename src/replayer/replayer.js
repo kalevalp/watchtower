@@ -51,7 +51,21 @@ function createPromiseProxy() {
     }
 }
 
-function createReplayHandler(originalLambdaFile, originalLambdaHandler, mock, updateContext, useCallbacks = false) {
+function defer() {
+    let res, rej;
+
+    const promise = new Promise((resolve, reject) => {
+	res = resolve;
+	rej = reject;
+    });
+
+    promise.resolve = res;
+    promise.reject = rej;
+
+    return promise;
+}
+
+function createReplayHandler(originalLambdaFile, originalLambdaHandler, useCallbacks = false) {
 
     const originalLambdaPath    = originalLambdaFile;
     const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
@@ -59,10 +73,44 @@ function createReplayHandler(originalLambdaFile, originalLambdaHandler, mock, up
 
     let eventHistory;
 
+    const mock = {
+        'aws-sdk': new Proxy(aws, {
+	    get: function (obj, prop) {
+                if (prop === "DynamoDB")
+		    return new Proxy(obj[prop], {
+                        get: function (obj, prop) {
+			    if (prop === "DocumentClient")
+                                return new Proxy(obj[prop], {
+				    construct: function (target, args) {
+                                        return new Proxy(new target(...args), {
+					    get: function (obj, prop) {
+					        for (const prx of proxies) {
+						    if (prop === prx.name) {
+						        if (!prx.proxy) {
+							    prx.proxy = prx.producer(obj[prop]);
+						        }
+						        return prx.proxy;
+						    }
+					        }
+					        return obj[prop];
+					    }
+                                        });
+				    },
+                                });
+			    else
+                                return obj[prop];
+                        }});
+                else
+		    return obj[prop];
+	    }}),
+    }
+
+
     let executionEnv = {
         console: 'inherit',
         sandbox: {
             process: process,
+            Math : new Proxy(Math, {get: (target, p) => p==="random" ? () => getValueSync("Math.random") : target[p]}),
         },
         require: {
             context: 'sandbox',
