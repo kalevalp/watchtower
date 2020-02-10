@@ -1,0 +1,16 @@
+Resources:
+  ##
+  ##   Invocation Kinesis Stream
+  InvocationStream:
+    Type: 'AWS::Kinesis::Stream'
+    Properties:
+      Name: Watchtower${self:provider.stage}InvocationStream
+      ShardCount: 10
+  ##
+  ##   Events Kinesis Stream
+  EventsStream:
+    Type: 'AWS::Kinesis::Stream'
+    Properties:
+      Name: Watchtower${self:provider.stage}EventsStream
+      ShardCount: 25
+  

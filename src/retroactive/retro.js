@@ -57,6 +57,8 @@ async function runRetroactiveChecker(conditions) {
 module.exports.runRetroactiveChecker = runRetroactiveChecker;
 
 if (require.main === module) {
+    aws.config.update({region: 'eu-west-2'});
+
     const conditions = [
         {
             check: (event, eventTrigger) =>

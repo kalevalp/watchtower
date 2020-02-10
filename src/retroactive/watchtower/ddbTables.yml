@@ -1,0 +1,40 @@
+########################################
+## Watchtower Resources
+##
+##   Events DynamoDB Table
+Resources:
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: propinst
+        AttributeType: S
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: propinst
+        KeyType: HASH
+      - AttributeName: id
+        KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      TableName: Watchtower-${self:provider.stage}-MonitoredEvents
+      TimeToLiveSpecification:
+        AttributeName: expiration
+        Enabled: true
+  ##
+  ##   Instances Checkpoints DynamoDB Table
+  CheckpointsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: propinst
+        AttributeType: S
+      KeySchema:
+      - AttributeName: propinst
+        KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TableName: Watchtower-${self:provider.stage}-InstanceCheckpoints
+  ##
+  ## END of Watchtower Resources
+  ########################################
+  
