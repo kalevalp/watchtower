@@ -55,14 +55,14 @@ let promisesToWaitFor = [];
  *     }
  *   }
  */
-function createEventPublisher(kinesisStreamName) {
+function createEventPublisher(kinesisStreamName, retroactive = false) {
     if (debug) console.log("Creating event publisher. kinesisStreamName:", kinesisStreamName);
     if (kinesisStreamName) {
-        return (logEvent, lambdaContext) => {
+        return (logEvent, lambdaContext, timestamp) => {
             const params = {};
             const data = {};
             data.logEvent = logEvent;
-            data.timestamp = Date.now();
+            data.timestamp = retroactive ? timestamp : Date.now();
             data.invocationID = lambdaContext.awsRequestId;
             params.StreamName = kinesisStreamName;
             // params.PartitionKey = lambdaContext.functionName;
@@ -71,7 +71,11 @@ function createEventPublisher(kinesisStreamName) {
 
 	    if (debug) console.log("Published event: ", JSON.stringify(params));
 
-            promisesToWaitFor.push(kinesis.putRecord(params).promise());
+            const publishPromise = kinesis.putRecord(params).promise();
+
+            promisesToWaitFor.push(publishPromise);
+
+            return publishPromise;
         }
     } else {
         return (logEvent) => {
@@ -190,6 +194,8 @@ function createRawRecorder( kinesisStreamName, s3BucketName ) {
 
 function createExecutionTimestamper(s3BucketName) {
     return () => {
+        const lambdaContext = getLambdaContext('execContext');
+
         const putPromise =
               Promise.resolve( {
                   Bucket: s3BucketName,
