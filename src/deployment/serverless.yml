@@ -1,5 +1,8 @@
 service: <name>
 
+plugins:
+  - serverless-step-functions
+
 provider:
   name: aws                 # Currently, only aws is supported
   runtime: nodejs[10|12].x  # Currently, only nodejs is supported

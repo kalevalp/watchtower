@@ -30,6 +30,18 @@ watchtower into a serverless application.
    application's `serverless.yml` file. A breakdown of the components
    that should be added follows.
 
+4. Install (and save as dev dependency) the
+   `serverless-step-functions` serverless plugin (if it is not already
+   installed).
+
+5. Make sure to install (and save as a dependency) the following
+   packages:
+   * `uuid`
+   * `watchtower-log-ingestion`
+   * `watchtower-monitor`
+   * `watchtower-recorder`
+
+
 ## The `serverless.yml` File
 
 The following components should be added to your `serverless.yml` file:
@@ -39,6 +51,10 @@ The following components should be added to your `serverless.yml` file:
 Watchtower is only supported on AWS Lamdbda, running Node.js
 serverless applications. Currently supported runtimes are `nodejs10.x`
 and `nodejs12.x`.
+
+You also need to install and declare the `serverless-step-functions`
+serverless plugin in order to deploy the checker step functions state
+machine.
 
 ### `provider.environment`
 
