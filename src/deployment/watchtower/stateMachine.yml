@@ -1,0 +1,23 @@
+##########################################
+## Watchtower Checker State Machine
+##
+stateMachines:
+  checker:
+    name: wtCheckerMachine
+    definition:
+      Comment: "Watchtower property checker state machine."
+      StartAt: WaitToStable
+      States:
+        WaitToStable:
+          Type : Wait
+          SecondsPath : $.stabilityDelay
+          Next: StableCheckerRun
+        StableCheckerRun:
+          Type: Task
+          Comment: "Second/Stable execution of the checker."
+          Resource:
+            Fn::GetAtt: [watchtower-monitor, Arn]
+          End: true
+##
+## End of Watchtower Checker State Machine
+##########################################

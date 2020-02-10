@@ -1,0 +1,65 @@
+########################################
+## Watchtower Functions
+##
+##   Log Ingestion
+watchtower-ingestion:
+  handler: watchtower/watchtower-log-ingestion.handler
+  events:
+    - stream:
+        arn:
+          'Fn::GetAtt': [ EventsStream, Arn ]
+        type: kinesis
+        enabled: true
+        startingPosition: TRIM_HORIZON
+  role:
+    'Fn::GetAtt': [ EventWriterRole, Arn ]
+  environment:
+    WATCHTOWER_EVENT_TABLE:
+      Ref: EventsTable
+    WATCHTOWER_INVOCATION_STREAM:
+      Ref: InvocationStream
+    # WATCHTOWER_PROPERTY_INSTANCE_TABLE:
+    #   Ref: InstancesTable
+##
+##   Log Checker
+watchtower-monitor:
+  handler: watchtower/watchtower-monitor.handler
+  # events:
+  # - stream:
+  #     arn:
+  #       'Fn::GetAtt': [ InvocationStream, Arn ]
+  #     type: kinesis
+  #     enabled: true
+  #     startingPosition: TRIM_HORIZON
+  environment:
+    WATCHTOWER_EVENT_TABLE:
+      Ref: EventsTable
+    WATCHTOWER_INVOCATION_STREAM:
+      Ref: InvocationStream
+    # WATCHTOWER_PROPERTY_INSTANCE_TABLE:
+    #   Ref: InstancesTable
+    WATCHTOWER_CHECKPOINT_TABLE:
+      Ref: CheckpointsTable
+    PROCESSING_LAMBDA_TIMEOUT: 6
+  role:
+    'Fn::GetAtt': [ EventReaderRole, Arn ]
+##
+##   Monitor state machine trigger
+wt-monitor-trigger:
+  handler: watchtower/watchtower-monitor-trigger.handler
+  events:
+  - stream:
+      arn:
+        'Fn::GetAtt': [ InvocationStream, Arn ]
+      type: kinesis
+      enabled: true
+      startingPosition: TRIM_HORIZON
+  environment:
+    # WATCHTOWER_CHECKER_SM_ARN:
+    #   'Fn::GetAtt': [ WtCheckerMachineArn, Arn ]
+    WATCHTOWER_CHECKER_SM_ARN: ${self:resources.Outputs.WTCheckerMachine.Value}
+  role:
+    'Fn::GetAtt': [ StateMachineListExec, Arn ]
+##
+## END of Watchtower Functions
+########################################

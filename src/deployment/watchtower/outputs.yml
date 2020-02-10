@@ -1,0 +1,5 @@
+Outputs:
+  WTCheckerMachine:
+    Description: The ARN of the checker state machine
+    Value:
+      Ref: WtCheckerMachine # Note the capitalized first letter. Name in the step function declaration is wtCheckerMachine. This an AWS weirdness.

@@ -1,0 +1,80 @@
+Resources:
+  ##
+  ##   Event-Writer IAM Role
+  EventWriterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: ${self:provider.stage}EventWriterRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sts:AssumeRole
+          Principal:
+            Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+        - PolicyName: BatchWriteToEventTable
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            -  Effect: Allow
+               Action:
+               - 'dynamodb:BatchWriteItem'
+               Resource:
+                 Fn::GetAtt: [EventsTable, Arn]
+  ##
+  ## Event-Reader IAM Role
+  EventReaderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: ${self:provider.stage}EventReaderRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sts:AssumeRole
+          Principal:
+            Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+        - PolicyName: QueryEventTable
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            -  Effect: Allow
+               Action:
+               - 'dynamodb:Query'
+               Resource:
+                 Fn::GetAtt: [EventsTable, Arn]
+  ##
+  ## State Machine Operations Role
+  StateMachineListExec:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: ${self:provider.stage}StateMachineListExec
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+        - PolicyName: ListAndExecuteSM
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'state:StartExecution'
+                Resource:
+                  ${self:resources.Outputs.WTCheckerMachine.Value}
+  
