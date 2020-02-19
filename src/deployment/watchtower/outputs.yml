@@ -3,3 +3,13 @@ Outputs:
     Description: The ARN of the checker state machine
     Value:
       Ref: WtCheckerMachine # Note the capitalized first letter. Name in the step function declaration is wtCheckerMachine. This an AWS weirdness.
+  WTEventsKinesisStream:
+    Value:
+      Ref: EventsStream
+    Export:
+      Name: watchtower-events-kinesis-stream
+  WTEventsKinesisStreamARN:
+    Value:
+      Fn::GetAtt: [EventsStream, Arn]
+    Export:
+      Name: watchtower-events-kinesis-stream-arn

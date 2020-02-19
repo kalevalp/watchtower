@@ -9,6 +9,8 @@ provider:
   environment:
     WATCHTOWER_EVENT_KINESIS_STREAM:
       Ref: EventsStream
+      # Fn::ImportValue: watchtower-events-kinesis-stream   # When deploying multiple separate stacks
+
     # DEBUG_WATCHTOWER: 1    # Produces verbose debug prints
     # PROFILE_WATCHTOWER: 1  # Produces timing information
   iamRoleStatements:
@@ -19,6 +21,7 @@ provider:
         - 'kinesis:PutRecords'
       Resource:
         Fn::GetAtt: [EventsStream, Arn]
+        # Fn::ImportValue: watchtower-events-kinesis-stream-arn   # When deploying multiple separate stacks
 
 functions:
   watchtower-ingestion: ${file(watchtower/functions.yml):watchtower-ingestion}   # Event ingestion function
@@ -36,6 +39,9 @@ resources:
     StateMachineListExec: ${file(watchtower/iamRoles.yml):Resources.StateMachineListExec}
   Outputs:
     WTCheckerMachine: ${file(watchtower/outputs.yml):Outputs.WTCheckerMachine}
+    WTEventsKinesisStream: ${file(watchtower/outputs.yml):Outputs.WTEventsKinesisStream}
+    WTEventsKinesisStreamARN: ${file(watchtower/outputs.yml):Outputs.WTEventsKinesisStreamARN}
+
 
 custom:
   # handlerFilePostfix: '-wrapper'
