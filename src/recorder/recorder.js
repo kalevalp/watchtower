@@ -7,7 +7,7 @@ const aws = require('aws-sdk');
 // const serialize = require('serialize-javascript-w-cycles');
 // const zlib = require('zlib');
 // const gzip = util.promisify(zlib.gzip);
-
+const _ = require('lodash');
 
 const kinesis = new aws.Kinesis();
 const s3 = new aws.S3();
@@ -438,6 +438,9 @@ function cbackProxyFactory(conditions, proxyContext) {
     });
 }
 
+/**
+ * @deprecated use createAWSSDKMock instead, add the class prefix to the function conditions
+ * */
 function createDDBDocClientMock ( getProxyConditions,
 				  putProxyConditions,
 				  deleteProxyConditions,
@@ -481,6 +484,68 @@ function createDDBDocClientMock ( getProxyConditions,
 	}})
 }
 
+/*
+ * proxyConditions: [ {context: <string>, functionName: <string>, condition: <function (target, thisArg, argumentsList) -> Bool, opInSucc: (argumentsList) -> (response) -> () }, ... ]
+ * */
+function createAWSSDKMock(proxyConditions, useCallbacks = false) {
+
+    const proxies = {};
+    const contexts = _.uniq(proxyConditions
+                            .map(elem => elem.context));
+    for (const cont of contexts) {
+        proxies[cont] = {};
+        proxyConditions.filter(elem => elem.context === cont).map(elem => elem.functionName)
+    }
+
+
+
+    return new Proxy(aws, {
+	get: function (obj, prop) {
+            if (prop === "DynamoDB") {
+		return new Proxy(obj[prop], {
+                    get: function (obj, prop) {
+			if (prop === "DocumentClient") {
+                            return new Proxy(obj[prop], {
+				construct: function (target, args) {
+                                    return new Proxy(new target(...args), {
+					get: function (obj, prop) {
+					    for (const prx of proxies) {
+						if (prop === prx.name) {
+						    if (!prx.proxy) {
+							prx.proxy = prx.producer(obj[prop]);
+						    }
+						    return prx.proxy;
+						}
+					    }
+					    return obj[prop];
+					}
+                                    });
+				},
+                            });
+			} else {
+                            return obj[prop];
+                        }
+                    }});
+            } else if (prop === "S3") {
+                return new Proxy(obj[prop], {
+                    construct: function (target, args) {
+                        return new Proxy(new target(...args), {
+			    get: function (obj, prop) {
+                                if (prop === 'getObject') {
+                                    console.log("In s3.getObject");
+                                    return () => console.log("In call to s3.getObject");
+                                }
+                            }})
+			//         for (const prx of proxies) {
+			//     	if (prop === prx.name) {
+			//     	    if (!prx.proxy) {
+			//     		prx.proxy = prx.producer(obj[prop]);
+                    }})
+            } else {
+		return obj[prop];
+            }
+	}})
+}
 
 
 function createRPMock(proxyConditions, useCallbacks = false, reallyMock = false) {
