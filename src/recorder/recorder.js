@@ -224,6 +224,10 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
         console: 'inherit',
         sandbox: {
             process: process,
+            JSON: {
+                parse: JSON.parse,
+                stringify: JSON.stringify,
+            }
         },
         require: {
             context: 'sandbox',
