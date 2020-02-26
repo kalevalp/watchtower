@@ -494,7 +494,15 @@ function createAWSSDKMock(proxyConditions, useCallbacks = false) {
                             .map(elem => elem.context));
     for (const cont of contexts) {
         proxies[cont] = {};
-        proxyConditions.filter(elem => elem.context === cont).map(elem => elem.functionName)
+        const funcNames = proxyConditions.filter(elem => elem.context === cont).map(elem => elem.functionName);
+        for (const funcName of funcNames) {
+            proxies[cont][funcName] = {};
+            proxies[cont][funcName].proxy = undefined;
+            const conds = proxyConditions
+                  .filter(elem => elem.context === cont && elem.functionName === funcName)
+                  .map(elem => ({cond: elem.condition, opInSucc: elem.opInSucc}));
+            proxies[cont][funcName].producer = useCallbacks ? cbackProxyFactory(conds) : awsPromiseProxyFactory(conds);
+        }
     }
 
 
@@ -509,15 +517,16 @@ function createAWSSDKMock(proxyConditions, useCallbacks = false) {
 				construct: function (target, args) {
                                     return new Proxy(new target(...args), {
 					get: function (obj, prop) {
-					    for (const prx of proxies) {
-						if (prop === prx.name) {
-						    if (!prx.proxy) {
-							prx.proxy = prx.producer(obj[prop]);
-						    }
-						    return prx.proxy;
-						}
-					    }
-					    return obj[prop];
+                                            if (proxies['DynamoDB.DocumentClient'] &&
+                                                proxies['DynamoDB.DocumentClient'][prop]) {
+                                                if (!proxies['DynamoDB.DocumentClient'][prop].proxy) {
+                                                    proxies['DynamoDB.DocumentClient'][prop].proxy =
+                                                        proxies['DynamoDB.DocumentClient'][prop].producer(obj[prop]);
+                                                }
+                                                return proxies['DynamoDB.DocumentClient'][prop].proxy;
+                                            } else {
+                                                return obj[prop];
+                                            }
 					}
                                     });
 				},
@@ -531,15 +540,17 @@ function createAWSSDKMock(proxyConditions, useCallbacks = false) {
                     construct: function (target, args) {
                         return new Proxy(new target(...args), {
 			    get: function (obj, prop) {
-                                if (prop === 'getObject') {
-                                    console.log("In s3.getObject");
-                                    return () => console.log("In call to s3.getObject");
+                                if (proxies['S3'] &&
+                                    proxies['S3'][prop]) {
+                                    if (!proxies['S3'][prop].proxy) {
+                                        proxies['S3'][prop].proxy =
+                                            proxies['S3'][prop].producer(obj[prop]);
+                                    }
+                                    return proxies['S3'][prop].proxy;
+                                } else {
+                                    return obj[prop];
                                 }
                             }})
-			//         for (const prx of proxies) {
-			//     	if (prop === prx.name) {
-			//     	    if (!prx.proxy) {
-			//     		prx.proxy = prx.producer(obj[prop]);
                     }})
             } else {
 		return obj[prop];
