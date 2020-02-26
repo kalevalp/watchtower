@@ -485,23 +485,23 @@ function createDDBDocClientMock ( getProxyConditions,
 }
 
 /*
- * proxyConditions: [ {context: <string>, functionName: <string>, condition: <function (target, thisArg, argumentsList) -> Bool, opInSucc: (argumentsList) -> (response) -> () }, ... ]
+ * proxyConditions: [ {scope: <string>, functionName: <string>, condition: <function (target, thisArg, argumentsList) -> Bool, opInSucc: (argumentsList) -> (response) -> () }, ... ]
  * */
 function createAWSSDKMock(proxyConditions, useCallbacks = false) {
 
     const proxies = {};
-    const contexts = _.uniq(proxyConditions
-                            .map(elem => elem.context));
-    for (const cont of contexts) {
-        proxies[cont] = {};
-        const funcNames = proxyConditions.filter(elem => elem.context === cont).map(elem => elem.functionName);
+    const scopes = _.uniq(proxyConditions
+                            .map(elem => elem.scope));
+    for (const scope of scopes) {
+        proxies[scope] = {};
+        const funcNames = proxyConditions.filter(elem => elem.scope === scope).map(elem => elem.functionName);
         for (const funcName of funcNames) {
-            proxies[cont][funcName] = {};
-            proxies[cont][funcName].proxy = undefined;
+            proxies[scope][funcName] = {};
+            proxies[scope][funcName].proxy = undefined;
             const conds = proxyConditions
-                  .filter(elem => elem.context === cont && elem.functionName === funcName)
+                  .filter(elem => elem.scope === scope && elem.functionName === funcName)
                   .map(elem => ({cond: elem.condition, opInSucc: elem.opInSucc}));
-            proxies[cont][funcName].producer = useCallbacks ? cbackProxyFactory(conds) : awsPromiseProxyFactory(conds);
+            proxies[scope][funcName].producer = useCallbacks ? cbackProxyFactory(conds) : awsPromiseProxyFactory(conds);
         }
     }
 
