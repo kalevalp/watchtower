@@ -518,6 +518,7 @@ function createAWSSDKMock(proxyConditions, useCallbacks = false) {
                                     return new Proxy(new target(...args), {
 					get: function (obj, prop) {
                                             if (proxies['DynamoDB.DocumentClient'] &&
+                                                proxies['DynamoDB.DocumentClient'].hasOwnProperty(prop) &&
                                                 proxies['DynamoDB.DocumentClient'][prop]) {
                                                 if (!proxies['DynamoDB.DocumentClient'][prop].proxy) {
                                                     proxies['DynamoDB.DocumentClient'][prop].proxy =
@@ -541,6 +542,7 @@ function createAWSSDKMock(proxyConditions, useCallbacks = false) {
                         return new Proxy(new target(...args), {
 			    get: function (obj, prop) {
                                 if (proxies['S3'] &&
+                                    proxies['S3'].hasOwnProperty(prop) &&
                                     proxies['S3'][prop]) {
                                     if (!proxies['S3'][prop].proxy) {
                                         proxies['S3'][prop].proxy =
