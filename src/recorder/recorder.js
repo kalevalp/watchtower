@@ -642,75 +642,74 @@ function createTwitMock(proxyConditions, useCallbacks = true, reallyMock = false
     });
 }
 
+// function createAWSSDKMock() {
+//     return new Proxy(aws, {
+//         get: function (obj, prop) {
+//             switch (prop) {
+//             case 'Kinesis':
+//                 return obj[prop];
+//                 // const kinesis = new aws.Kinesis();
+//                 // return {
+//                 //     putRecord: recordWrapperCallback(kinesis.putRecord, "aws-sdk.Kinesis.putRecord"),
+//                 // }
+//                 break;
+//             case 'StepFunctions': // TODO
+//                 return obj[prop];
+//                 // const stepfunctions = new aws.StepFunctions();
+//                 // return {
+//                 //     startExecution: recordWrapperCallback(stepfunctions.startExecution, "aws-sdk.StepFunctions.startExecution"),
+//                 //     getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask, "aws-sdk.StepFunctions.getActivityTask"),
+//                 //     sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure, "aws-sdk.StepFunctions.sendTaskFailure"),
+//                 //     sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess, "aws-sdk.StepFunctions.sendTaskSuccess"),
+//                 // }
 
-function createAWSSDKMock() {
-    return new Proxy(aws, {
-        get: function (obj, prop) {
-            switch (prop) {
-            case 'Kinesis':
-                return obj[prop];
-                // const kinesis = new aws.Kinesis();
-                // return {
-                //     putRecord: recordWrapperCallback(kinesis.putRecord, "aws-sdk.Kinesis.putRecord"),
-                // }
-                break;
-            case 'StepFunctions': // TODO
-                return obj[prop];
-                // const stepfunctions = new aws.StepFunctions();
-                // return {
-                //     startExecution: recordWrapperCallback(stepfunctions.startExecution, "aws-sdk.StepFunctions.startExecution"),
-                //     getActivityTask: recordWrapperCallback(stepfunctions.getActivityTask, "aws-sdk.StepFunctions.getActivityTask"),
-                //     sendTaskFailure: recordWrapperCallback(stepfunctions.sendTaskFailure, "aws-sdk.StepFunctions.sendTaskFailure"),
-                //     sendTaskSuccess: recordWrapperCallback(stepfunctions.sendTaskSuccess, "aws-sdk.StepFunctions.sendTaskSuccess"),
-                // }
+//                 break;
+//             case 'Rekognition': // TODO
+//                 return obj[prop];
+//                 // const rek = new aws.Rekognition();
+//                 // return {
+//                 //     detectLabels: recordWrapperCallback((params, cb) => rek.detectLabels(params, cb), "aws-sdk.Rekognition.detectLabels"),
+//                 // }
+//                 break;
+//             case 'S3':
+//                 return obj[prop];
+//                 // const s3 = new aws.S3();
+//                 // return new Proxy(obj[prop], {
+//                 //     get: (target, p) =>
+//                 //         p==="putObject" ? (params, callback) => {
+//                 //             params.Tagging = params.Tagging ? params.Tagging + "&" : "";
 
-                break;
-            case 'Rekognition': // TODO
-                return obj[prop];
-                // const rek = new aws.Rekognition();
-                // return {
-                //     detectLabels: recordWrapperCallback((params, cb) => rek.detectLabels(params, cb), "aws-sdk.Rekognition.detectLabels"),
-                // }
-                break;
-            case 'S3':
-                return obj[prop];
-                // const s3 = new aws.S3();
-                // return new Proxy(obj[prop], {
-                //     get: (target, p) =>
-                //         p==="putObject" ? (params, callback) => {
-                //             params.Tagging = params.Tagging ? params.Tagging + "&" : "";
+//                 //             params.Tagging = params.Tagging + "execid=" + invocationID;
 
-                //             params.Tagging = params.Tagging + "execid=" + invocationID;
+//                 //             return recordWrapperCallback((params, cb) => s3.putObject(params, cb),"aws-sdk.s3.putobject")(params, callback);
+//                 //         } :
+//                 //     p==="getObject" ? recordWrapperCallback((params, cb) => s3.getObject(params, cb),"aws-sdk.S3.getObject") :
+//                 //         target[p]});
+//                 break;
+//             case 'DynamoDB':
+//                 return obj[prop];
+//                 // const ddb = new aws.DynamoDB(options);
+//                 // return new Proxy(ddb, {
+//                 //     get: (target, p) =>
+//                 //         p==="putItem" ?
+//                 //         (params, callback) => {
+//                 //             params.Item.execId = invocationID;
 
-                //             return recordWrapperCallback((params, cb) => s3.putObject(params, cb),"aws-sdk.s3.putobject")(params, callback);
-                //         } :
-                //     p==="getObject" ? recordWrapperCallback((params, cb) => s3.getObject(params, cb),"aws-sdk.S3.getObject") :
-                //         target[p]});
-                break;
-            case 'DynamoDB':
-                return obj[prop];
-                // const ddb = new aws.DynamoDB(options);
-                // return new Proxy(ddb, {
-                //     get: (target, p) =>
-                //         p==="putItem" ?
-                //         (params, callback) => {
-                //             params.Item.execId = invocationID;
-
-                //             return recordWrapperCallback((params, cb) => target.putItem(params, cb), "aws-sdk.dynamodb.putItem")(params, callback);
-                //         } :
-                //     p==="getItem" ?
-                //         (params, callback) => {
-                //             return recordWrapperCallback((ps, cb) => target.getItem(ps, cb))(params, callback)
-                //         } :
-                //     target[p]
-                // })
-                break;
-            default:
-                return obj[prop];
-            }
-        }
-    });
-}
+//                 //             return recordWrapperCallback((params, cb) => target.putItem(params, cb), "aws-sdk.dynamodb.putItem")(params, callback);
+//                 //         } :
+//                 //     p==="getItem" ?
+//                 //         (params, callback) => {
+//                 //             return recordWrapperCallback((ps, cb) => target.getItem(ps, cb))(params, callback)
+//                 //         } :
+//                 //     target[p]
+//                 // })
+//                 break;
+//             default:
+//                 return obj[prop];
+//             }
+//         }
+//     });
+// }
 
 function createNodemailerMock(proxyConditions, reallyMock = false) {
     const nm = require('nodemailer');
