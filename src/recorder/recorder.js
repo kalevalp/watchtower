@@ -333,7 +333,7 @@ function recorderRequire(originalModuleFile, mock, runLocally) {
  *
  * We call the operation of the first condition matched.
  */
-function awsPromiseProxyFactory(conditions, proxyContext) {
+function awsPromiseProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
 
@@ -370,7 +370,7 @@ function awsPromiseProxyFactory(conditions, proxyContext) {
     });
 }
 
-function promiseProxyFactory(conditions, proxyContext) {
+function promiseProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
 
@@ -403,7 +403,7 @@ function promiseProxyFactory(conditions, proxyContext) {
 }
 
 // TODO - implement rnr for callback based methods
-function cbackProxyFactory(conditions, proxyContext) {
+function cbackProxyFactory(conditions) {
     return (underlyingObj) => new Proxy(underlyingObj, {
         apply: function (target, thisArg, argumentsList) {
             if (conditions) {
@@ -447,10 +447,10 @@ function createDDBDocClientMock ( getProxyConditions,
 				  queryProxyConditions,
 				  useCallbacks = false ) {
 
-    const proxies = [{name: 'get',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(getProxyConditions, 'get') : awsPromiseProxyFactory(getProxyConditions, 'get')},
-		     {name: 'put',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(putProxyConditions, 'put') : awsPromiseProxyFactory(putProxyConditions, 'put')},
-                     {name: 'delete', proxy: undefined, producer: useCallbacks ? cbackProxyFactory(deleteProxyConditions, 'delete') : awsPromiseProxyFactory(deleteProxyConditions, 'delete')},
-                     {name: 'query',  proxy: undefined, producer: useCallbacks ? cbackProxyFactory(queryProxyConditions, 'query') : awsPromiseProxyFactory(queryProxyConditions, 'query')},
+    const proxies = [{name: 'get',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(getProxyConditions) : awsPromiseProxyFactory(getProxyConditions)},
+		     {name: 'put',    proxy: undefined, producer: useCallbacks ? cbackProxyFactory(putProxyConditions) : awsPromiseProxyFactory(putProxyConditions)},
+                     {name: 'delete', proxy: undefined, producer: useCallbacks ? cbackProxyFactory(deleteProxyConditions) : awsPromiseProxyFactory(deleteProxyConditions)},
+                     {name: 'query',  proxy: undefined, producer: useCallbacks ? cbackProxyFactory(queryProxyConditions) : awsPromiseProxyFactory(queryProxyConditions)},
 		    ];
 
     return new Proxy(aws, {
