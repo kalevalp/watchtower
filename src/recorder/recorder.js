@@ -792,6 +792,7 @@ module.exports.createEventPublisher = createEventPublisher;
 module.exports.recorderRequire = recorderRequire;
 module.exports.createBatchEventPublisher = createBatchEventPublisher;
 module.exports.createDDBDocClientMock = createDDBDocClientMock;
+module.exports.createAWSSDKMock = createAWSSDKMock;
 module.exports.createTwitMock = createTwitMock;
 module.exports.createRPMock = createRPMock;
 module.exports.createSendgridMailMock = createSendgridMailMock;
