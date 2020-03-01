@@ -16,12 +16,13 @@ let hist;
 let responseRegistry;
 
 function triggerResponse(histEvent) {
-    const response= responseRegistry[histEvent.idx];
-    response.trigger();
+    const response = responseRegistry[histEvent.idx];
+    response.deferred.trigger();
+    return response.resp;
 }
 
-function registerResponse(resp, idx) {
-    responseRegistry[idx] = resp;
+function registerResponse(resp, deferred, idx) {
+    responseRegistry[idx] = {resp, deferred};
 };
 
 function createPromiseProxy() {
@@ -34,9 +35,12 @@ function createPromiseProxy() {
         if (next.idx === curr.idx) { // The next op is the response. Respond.
             response = Promise.resolve(eventHistory[curr.idx].item.data); // Stored response for this request.
         } else { // The next op is not the response. Need to register the response, and potentially trigger other responses.
-            response = new Promise(); // TODO
+            const deferred = defer();
+            const value = eventHistory[curr.idx].item.data;
+            response = deferred
+                .then(() => value)
 
-            registerResponse(response, curr.idx);
+            registerResponse(response, deferred, curr.idx);
 
             while (next &&
                    next.type === 'RESPONSE') {
@@ -84,15 +88,11 @@ function createReplayHandler(originalLambdaFile, originalLambdaHandler, useCallb
 				    construct: function (target, args) {
                                         return new Proxy(new target(...args), {
 					    get: function (obj, prop) {
-					        for (const prx of proxies) {
-						    if (prop === prx.name) {
-						        if (!prx.proxy) {
-							    prx.proxy = prx.producer(obj[prop]);
-						        }
-						        return prx.proxy;
-						    }
-					        }
-					        return obj[prop];
+                                                if (['get', 'put', 'delete', 'query'].includes(prop)) {
+                                                    return createPromiseProxy();
+                                                } else {
+                                                    return obj[prop];
+                                                }
 					    }
                                         });
 				    },
@@ -168,7 +168,6 @@ async function replayAsyncHandler(executionID, handler, s3BucketName) {
     // handler.registerEventHistory(order.filter(elem => elem.type === 'RESPONSE').map(elem => hist.find(item => item.item.idx === elem.idx)));
 
     // await handler(eventTrigger.event, eventTrigger.context);
-
 
 }
 
