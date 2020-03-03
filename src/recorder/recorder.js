@@ -438,6 +438,35 @@ function cbackProxyFactory(conditions) {
     });
 }
 
+function syncProxyFactory() {
+    return (underlyingObj) => new Proxy(underlyingObj, {
+        apply: function (target, thisArg, argumentsList) {
+            const opIdx = operationIndex++;
+
+            if (rnrRecording)
+                rawRecorder({fname: target.name, argumentsList},`${opIdx}-req` )
+
+            console.log(JSON.stringify({fname: target.name, argumentsList},`${opIdx}-req`));
+
+            const res = target.apply(thisArg, argumentsList);
+
+            operationTotalOrder.push({type: "CALL", idx: opIdx});
+            console.log(JSON.stringify({type: "CALL", idx: opIdx}));
+
+
+            if (rnrRecording) {
+                operationTotalOrder.push({type: "RESPONSE", idx: opIdx});
+                rawRecorder(res, opIdx)
+            }
+
+            console.log(JSON.stringify({type: "RESPONSE", idx: opIdx}));
+            console.log(JSON.stringify(res));
+
+            return res;
+        }
+    })
+}
+
 /**
  * @deprecated use createAWSSDKMock instead, add the class prefix to the function conditions
  * */
@@ -490,22 +519,24 @@ function createDDBDocClientMock ( getProxyConditions,
 function createAWSSDKMock(proxyConditions, useCallbacks = false) {
 
     const proxies = {};
-    const scopes = _.uniq(proxyConditions
-                            .map(elem => elem.scope));
-    for (const scope of scopes) {
-        proxies[scope] = {};
-        const funcNames = proxyConditions.filter(elem => elem.scope === scope).map(elem => elem.functionName);
-        for (const funcName of funcNames) {
-            proxies[scope][funcName] = {};
-            proxies[scope][funcName].proxy = undefined;
-            const conds = proxyConditions
-                  .filter(elem => elem.scope === scope && elem.functionName === funcName)
-                  .map(elem => ({cond: elem.condition, opInSucc: elem.opInSucc}));
-            proxies[scope][funcName].producer = useCallbacks ? cbackProxyFactory(conds) : awsPromiseProxyFactory(conds);
+
+    if (proxyConditions) {
+        const scopes = _.uniq(proxyConditions
+                              .map(elem => elem.scope));
+        for (const scope of scopes) {
+            proxies[scope] = {};
+            const funcNames = proxyConditions.filter(elem => elem.scope === scope).map(elem => elem.functionName);
+            for (const funcName of funcNames) {
+                proxies[scope][funcName] = {};
+                proxies[scope][funcName].proxy = undefined;
+                const conds = proxyConditions
+                      .filter(elem => elem.scope === scope && elem.functionName === funcName)
+                      .map(elem => ({cond: elem.condition, opInSucc: elem.opInSucc}));
+                proxies[scope][funcName].producer = useCallbacks ? cbackProxyFactory(conds) : awsPromiseProxyFactory(conds);
+            }
         }
+
     }
-
-
 
     return new Proxy(aws, {
 	get: function (obj, prop) {
@@ -787,6 +818,58 @@ function createNodeFetchMock(proxyConditions, reallyMock = false) {
     });
 }
 
+function createCryptoMock() {
+    const orig = require('crypto');
+
+    return new Proxy(orig, {
+        get: function (obj, prop) {
+            if (prop === "createHash") {
+                return new Proxy(obj[prop], {
+                    apply: function (target, thisArg, argumentsList) {
+                        return new Proxy(target.apply(thisArg, argumentsList),{
+                            get: function (obj, prop) {
+                                if (["update", "digest"].includes(prop)) {
+                                    return syncProxyFactory()(obj[prop]);
+                                } else {
+                                    return obj[prop];
+                                }
+                            }
+                        });
+                    }
+                })
+            } else {
+                return obj[prop];
+            }
+        }
+    })
+}
+
+function createLoremIpsumMock() {
+    const orig = require('lorem-ipsum');
+
+    return new Proxy(orig, {
+        get: function (obj, prop) {
+            if (prop === 'LoremIpsum') {
+                return new Proxy(obj[prop], {
+                    construct: function (target, args) {
+                        return new Proxy(new target(...args), {
+                            get: function (obj, prop) {
+                                if (prop === 'generateParagraphs') {
+                                    return syncProxyFactory()(obj[prop]);
+                                    // console.log('*** huh ***');
+                                } else {
+                                    return obj[prop];
+                                }
+                            }
+                        })
+                    }
+                })
+            }
+        }
+    })
+}
+
+
 
 module.exports.createRecordingHandler = createRecordingHandler;
 module.exports.createEventPublisher = createEventPublisher;
@@ -798,15 +881,46 @@ module.exports.createTwitMock = createTwitMock;
 module.exports.createRPMock = createRPMock;
 module.exports.createSendgridMailMock = createSendgridMailMock;
 module.exports.configureRNRRecording = configureRNRRecording;
+module.exports.createCryptoMock = createCryptoMock;
+module.exports.createLoremIpsumMock = createLoremIpsumMock;
 
 if (require.main === module) {
-    const t = createTwitMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], true, true);
-    const y = new t({consumer_key: '123', consumer_secret: '456', access_token: '789', access_token_secret: 'abc'});
-    y.post();
+    // const t = createTwitMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], true, true);
+    // const y = new t({consumer_key: '123', consumer_secret: '456', access_token: '789', access_token_secret: 'abc'});
+    // y.post();
 
-    const r = createRPMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], false, true);
-    r();
+    // const r = createRPMock([{cond: () => true, opInSucc: () => console.log('Mocking!')}], false, true);
+    // r();
 
-    const sgm = createSendgridMailMock();
-    sgm.send();
+    // const sgm = createSendgridMailMock();
+    // sgm.send();
+
+    const cr = createCryptoMock();
+    const hash = cr.createHash('sha256');
+    hash.update("AAAAAAAAAAAAAAAAAAA");
+    const digest = hash.digest('hex');
+
+    console.log(digest);
+
+
+
+    const { LoremIpsum } = createLoremIpsumMock();
+          // require('lorem-ipsum');
+
+// let dynamodb = new aws.DynamoDB.DocumentClient();
+
+const lorem = new LoremIpsum({
+  sentencesPerParagraph: {
+    max: 12,
+    min: 4
+  },
+  wordsPerSentence: {
+    max: 20,
+    min: 8
+  }
+});
+
+    const text = lorem.generateParagraphs(10);
+
+    console.log(text);
 }
