@@ -27,7 +27,9 @@ recorder.configureRNRRecording(
     });
 
 const mock = {
-    'aws-sdk': recorder.createDDBDocClientMock(),
+    'aws-sdk': recorder.createAWSSDKMock(),
+    'crypto': recorder.createCryptoMock(),
+    'lorem-ipsum': recorder.createLoremIpsumMock(),
 };
 
 module.exports.consume = recorder.createRecordingHandler('handler.js', 'consume' , mock, true, updateContext, false);
