@@ -13,6 +13,7 @@
     "watchtower-recorder": "^2.6.0"
   },
   "devDependencies": {
-    "aws-sdk": "^2.614.0"
+    "aws-sdk": "^2.614.0",
+    "watchtower-replayer": "^1.0.1"
   }
 }
