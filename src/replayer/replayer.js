@@ -162,6 +162,13 @@ async function replayAsyncHandler(executionID, handler, s3BucketName) {
 
     const eventTrigger = hist.find(elem => elem.item.idx === 'event-context').item.data;
 
+    if (handler) {
+        handler.registerEventHistory(hist);
+        const result = await handler(eventTrigger.event, eventTrigger.context);
+
+        return result;
+    }
+
     // console.log(order.filter(elem => elem.type === 'RESPONSE').map(elem => hist.find(item => item.item.idx === elem.idx).item.data.request));
 
 
@@ -176,6 +183,7 @@ function replayCBackHandler(executionID, handler, s3BucketName) {
 }
 
 module.exports.replayAsyncHandler = replayAsyncHandler;
+module.exports.createReplayHandler = createReplayHandler;
 
 if (require.main === module) {
     const execId = process.argv[2];
