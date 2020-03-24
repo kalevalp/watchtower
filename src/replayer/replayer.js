@@ -3,6 +3,7 @@ const fs = require("fs");
 const util = require('util');
 
 const aws = require('aws-sdk');
+const li = require('lorem-ipsum');
 // const serialize = require('serialize-javascript-w-cycles');
 // const zlib = require('zlib');
 // const gunzip = util.promisify(zlib.gunzip);
@@ -12,8 +13,9 @@ const s3 = new aws.S3();
 
 const debug = process.env.DEBUG_WATCHTOWER;
 
-let hist;
+let eventHistory;
 let responseRegistry;
+let eventOrder;
 
 function triggerResponse(histEvent) {
     const response = responseRegistry[histEvent.idx];
@@ -25,10 +27,19 @@ function registerResponse(resp, deferred, idx) {
     responseRegistry[idx] = {resp, deferred};
 };
 
+function createAWSPromiseProxy() {
+    return () => ({
+        promise: () => createPromiseProxy()
+    })
+}
+
 function createPromiseProxy() {
     return () => {
-        let curr = hist.shift();
-        let next = hist[0];
+        let curr = eventOrder.shift();
+
+        if (curr.type !== 'CALL') throw "Expected call, got a response instead!";
+
+        let next = eventOrder.shift();
 
         let response;
 
@@ -42,16 +53,32 @@ function createPromiseProxy() {
 
             registerResponse(response, deferred, curr.idx);
 
-            while (next &&
-                   next.type === 'RESPONSE') {
-                let curr = hist.shift();
-                let next = hist[0];
+            while (eventOrder[0] &&
+                   eventOrder[0].type === 'RESPONSE') {
+                curr = next;
+                next = eventOrder.shift();
 
                 triggerResponse(curr);
             }
         }
 
         return response;
+    }
+}
+
+function createSyncProxy() {
+    return () => {
+        let req = eventOrder.shift();
+        let next = eventOrder.shift();
+
+        // Recorded sync operations should always be followed by a response.
+
+        if (next.idx !== req.idx) throw "FATAL ERROR! Recorded sync request not followed by a matching response."
+
+        let response = eventHistory[req.idx].item.data; // Stored response for this request.
+
+        return response;
+
     }
 }
 
@@ -89,7 +116,7 @@ function createReplayHandler(originalLambdaFile, originalLambdaHandler, useCallb
                                         return new Proxy(new target(...args), {
 					    get: function (obj, prop) {
                                                 if (['get', 'put', 'delete', 'query'].includes(prop)) {
-                                                    return createPromiseProxy();
+                                                    return createAWSPromiseProxy();
                                                 } else {
                                                     return obj[prop];
                                                 }
@@ -102,7 +129,32 @@ function createReplayHandler(originalLambdaFile, originalLambdaHandler, useCallb
                         }});
                 else
 		    return obj[prop];
-	    }}),
+	    }
+        }),
+
+
+        'lorem-ipsum': new Proxy(li, {
+            get: function (obj, prop) {
+                if (prop === 'LoremIpsum') {
+                    return new Proxy(obj[prop], {
+                        construct: function (target, args) {
+                            return new Proxy(new target(...args), {
+                                get: function (obj, prop) {
+                                    if (prop === 'generateParagraphs') {
+                                        return createSyncProxy();
+                                        // console.log('*** huh ***');
+                                    } else {
+                                        return obj[prop];
+                                    }
+                                }
+                            })
+                        }
+                    })
+                }
+            }
+        }),
+
+
     }
 
 
@@ -110,7 +162,7 @@ function createReplayHandler(originalLambdaFile, originalLambdaHandler, useCallb
         console: 'inherit',
         sandbox: {
             process: process,
-            Math : new Proxy(Math, {get: (target, p) => p==="random" ? () => getValueSync("Math.random") : target[p]}),
+            Math : new Proxy(Math, {get: (target, p) => p==="random" ? createSyncProxy() : target[p]}),
         },
         require: {
             context: 'sandbox',
@@ -150,32 +202,27 @@ async function replayAsyncHandler(executionID, handler, s3BucketName) {
 
     // TODO - handle history larger than 1000 objects
 
-    const hist = await Promise.all(history.Contents
-                                   .map(item => item.Key)
-                                   .map(async Key => (
-                                       {
-                                           key: Key,
-                                           item: JSON.parse(((await s3.getObject({Key, Bucket: s3BucketName}).promise()).Body.toString()))
-                                       })))
+    eventHistory = await Promise.all(history.Contents
+                             .map(item => item.Key)
+                             .map(async Key => (
+                                 {
+                                     key: Key,
+                                     item: JSON.parse(((await s3.getObject({Key, Bucket: s3BucketName}).promise()).Body.toString()))
+                                 })))
 
-    const order = hist.find(elem => elem.item.idx === 'opTO').item.data.operationTotalOrder;
+    eventOrder = eventHistory.find(elem => elem.item.idx === 'opTO').item.data.operationTotalOrder;
 
-    const eventTrigger = hist.find(elem => elem.item.idx === 'event-context').item.data;
+    const eventTrigger = eventHistory.find(elem => elem.item.idx === 'event-context').item.data;
+
+
+    eventHistory = eventHistory.reduce((acc, curr) => {acc[curr.item.idx] = curr; return acc}, {});
 
     if (handler) {
-        handler.registerEventHistory(hist);
+        handler.registerEventHistory(eventHistory);
         const result = await handler(eventTrigger.event, eventTrigger.context);
 
         return result;
     }
-
-    // console.log(order.filter(elem => elem.type === 'RESPONSE').map(elem => hist.find(item => item.item.idx === elem.idx).item.data.request));
-
-
-    // handler.registerEventHistory(order.filter(elem => elem.type === 'RESPONSE').map(elem => hist.find(item => item.item.idx === elem.idx)));
-
-    // await handler(eventTrigger.event, eventTrigger.context);
-
 }
 
 function replayCBackHandler(executionID, handler, s3BucketName) {
@@ -188,5 +235,5 @@ module.exports.createReplayHandler = createReplayHandler;
 if (require.main === module) {
     const execId = process.argv[2];
 
-    replayAsyncHandler(execId,'','wtrnrbucket');
+    replayAsyncHandler(execId, undefined, 'wtrnrbucket');
 }
