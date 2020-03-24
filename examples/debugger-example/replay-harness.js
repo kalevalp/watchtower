@@ -8,5 +8,5 @@ module.exports = {consumeHandler, produceHandler};
 if (require.main === module) {
     const execId = process.argv[2];
 
-    replayAsyncHandler(execId, produceHandler, 'wtrnrbucket');
+    replayer.replayAsyncHandler(execId, produceHandler, 'wtrnrbucket');
 }
