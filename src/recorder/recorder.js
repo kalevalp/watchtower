@@ -220,15 +220,22 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
     const originalLambdaCode    = fs.readFileSync(originalLambdaFile, 'utf8');
     const originalLambdaScript  = new VMScript(originalLambdaCode);
 
+    const sandbox = {
+        process: process,
+        JSON: {
+            parse: JSON.parse,
+            stringify: JSON.stringify,
+        }
+    }
+
+    if (rnrRecording) {
+        const randFactory = syncProxyFactory()(Math.random);
+        sandbox.Math = new Proxy(Math, {get: (target, p) => p==="random" ? randFactory : target[p]});
+    }
+
     let executionEnv = {
         console: 'inherit',
-        sandbox: {
-            process: process,
-            JSON: {
-                parse: JSON.parse,
-                stringify: JSON.stringify,
-            }
-        },
+        sandbox,
         require: {
             context: 'sandbox',
             external: true,
