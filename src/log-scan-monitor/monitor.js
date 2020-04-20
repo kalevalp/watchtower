@@ -123,6 +123,12 @@ function eventOrderComparator(a, b) {
     // return a.timestamp === b.timestamp ? a.id - b.id : a.timestamp - b.timestamp;
 }
 
+function produceOrders(eventList) {
+
+
+    return [eventList];
+}
+
 function monitorFactory(properties) {
     if (debug) {
         console.log(JSON.stringify(properties));
@@ -232,16 +238,17 @@ function monitorFactory(properties) {
 
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
-            .then(results => results.sort(eventOrderComparator))
-            .then(async results => {
-                if (debug) console.log("Events: ", JSON.stringify(results));
-                if (debug) console.log("Events.timestamps: ", JSON.stringify(results.map(e => e.timestamp)));
+            // .then(results => results.sort(eventOrderComparator))
+            .then(results => produceOrders(results))
+            .then(orders => Promise.all(orders.map(async order => {
+                if (debug) console.log("Events: ", JSON.stringify(order));
+                if (debug) console.log("Events.timestamps: ", JSON.stringify(order.map(e => e.timestamp)));
 
                 const stabilityTime = preCallTime - ingestionTimeOut*1000 - 1000; // preCallTime is in (ms), rest is in (s).
 
                 if (debug) console.log("stabilityTime: ", stabilityTime);
 
-                const stableEvents = results.filter(e => Number(e.timestamp.N) < stabilityTime);
+                const stableEvents = order.filter(e => Number(e.timestamp.N) < stabilityTime);
 
                 if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
@@ -297,13 +304,13 @@ function monitorFactory(properties) {
                     const lastEvent = intermediateState.lastProcessedEvent;
                     if (debug) console.log("Checkpointing stable. Last event: ", JSON.stringify(lastEvent));
                     if (lastEvent && intermediateState.state && lastEvent.timestamp && lastEvent.id)
-                    await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, intermediateState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
+                        await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, intermediateState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
                 }
 
                 // Mark TTL for all stable instance events (not projections).
                 return Promise.all(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance)) // Removes projections
-                    .map(e => updateInstanceExpiration(e)));
-            })
+                                   .map(e => updateInstanceExpiration(e)));
+            })))
             .catch((err) => console.log(err));
     }
 }
