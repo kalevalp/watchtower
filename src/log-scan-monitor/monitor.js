@@ -11,6 +11,9 @@ const checkpointTable = process.env['WATCHTOWER_CHECKPOINT_TABLE'];
 const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
 
+const reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
+if (!reorderGranularity) reorderGranularity = 2; // Default to 2ms granularity
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -124,9 +127,51 @@ function eventOrderComparator(a, b) {
 }
 
 function produceOrders(eventList) {
+    const sorted = eventList.sort(eventOrderComparator);
 
+    return produceOrdersRec(sorted);
+}
 
-    return [eventList];
+function produceOrdersRec(sorted) {
+    let trimmedPairs;
+    let i;
+    for (i = 0; i < sorted.length-1; i++) {
+        if ( Number(sorted[i+1].timestamp.N) - Number(sorted[i].timestamp.N) <= reorderGranularity) {
+
+            // Find interleaving block
+            let blockEnd = i;
+            let trueBlock = false;
+
+            // TODO - make sure I did not confuse the indices here.
+            do {
+                blockEnd++;
+                trueBlock = trueBlock || sorted[blockEnd].executionId === sorted[i].executionId; // TODO - read the correct field here.
+            } while (Number(sorted[blockEnd].timestamp.N) - Number(sorted[i].timestamp.N) <= reorderGranularity &&
+                     blockEnd < sorted.length - 1); // Don't want to overstep array
+
+            if (!trueBlock) continue; // Entire block composed of events from a different execution, no need to recurse
+
+            // Prepare recursive call
+            trimmed = [...Array(blockEnd-i-1).keys()]
+                .filter(idx => sorted[i + idx + 1].executionId === sorted[i].executionId) // TODO - read the correct field here.
+                .map(idx => {
+                    const trimmedList = sorted.slice(i+1);
+                    const switchedValue = trimmedList[idx];
+                    trimmedList[idx] = sorted[i];
+                    return ({switchedValue, trimmedList});
+                });
+            trimmed.push({sorted[i], sorted.slice(i+1)}); // No reordering recursion.
+
+            break;
+        }
+    }
+
+    // Recursive call
+    const head = sorted.slice(0,i);
+    return trimmedPairs.map(pair => {
+        const recResult = produceOrdersRec(pair.trimmedPairs);
+        return recResult.map(tail => head.concat([pair.switchedValue], tail));
+    }).flat();
 }
 
 function monitorFactory(properties) {
@@ -238,7 +283,6 @@ function monitorFactory(properties) {
 
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
-            // .then(results => results.sort(eventOrderComparator))
             .then(results => produceOrders(results))
             .then(orders => Promise.all(orders.map(async order => {
                 if (debug) console.log("Events: ", JSON.stringify(order));
