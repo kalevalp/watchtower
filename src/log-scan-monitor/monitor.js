@@ -128,8 +128,9 @@ function eventOrderComparator(a, b) {
 
 function produceOrders(eventList) {
     const sorted = eventList.sort(eventOrderComparator);
+    return sorted;
 
-    return produceOrdersRec(sorted);
+    // return produceOrdersRec(sorted);
 }
 
 function produceOrdersRec(sorted) {
@@ -284,7 +285,7 @@ function monitorFactory(properties) {
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
             .then(results => produceOrders(results))
-            .then(orders => Promise.all(orders.map(async order => {
+            .then(order => {
                 if (debug) console.log("Events: ", JSON.stringify(order));
                 if (debug) console.log("Events.timestamps: ", JSON.stringify(order.map(e => e.timestamp)));
 
@@ -354,7 +355,7 @@ function monitorFactory(properties) {
                 // Mark TTL for all stable instance events (not projections).
                 return Promise.all(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance)) // Removes projections
                                    .map(e => updateInstanceExpiration(e)));
-            })))
+            })
             .catch((err) => console.log(err));
     }
 }

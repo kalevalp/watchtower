@@ -1,3 +1,6 @@
+const reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
+if (!reorderGranularity) reorderGranularity = 2; // Default to 2ms granularity
+
 function getInstance(prop, eventParams, eventType) {
     let params;
     if (eventType) {
@@ -190,78 +193,176 @@ function convertParams(params) {
     return result;
 }
 
-function runProperty(property, events, instance, fromState) {
-    let state;
-    if (!fromState) {
-        state = {
+function eventsTooClose(eventA, eventB) {
+    return Math.abs(Number(eventA.timestamp.N) - Number(eventB.timestamp.N)) <= reorderGranularity;
+}
+
+function runProperty(property, events, instance, fromStates) {
+    let states;
+    if (!fromStates) {
+        states = [{
             curr: 'INITIAL',
             compound: property.getNewCompoundState ? property.getNewCompoundState() : {},
-        };
+            replacements: [],
+        }];
     } else {
-        state = {
+        states = fromStates.map(fromState => ({
 	    curr: fromState.curr,
 	    compound: JSON.parse(JSON.stringify(fromState.compound)),
-	}
+            replacements: [],
+	}));
     }
 
     let lastProcessedEvent;
 
-    for (const e of events) {
-        const eventType = e.type.S;
-        const eventParamsDict = convertParams(e.params);
+    for (let i = 0; i < events.length; i++) {
+        let e = events[i];
+        let next = events[i+1];
 
-        // const eventInvocationUuid = e.invocation.S;
 
-        // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
-        const transition =
-              property.stateMachine[eventType]['ANY'] ?
-              property.stateMachine[eventType]['ANY'] :
-              property.stateMachine[eventType][state.curr];
+        // Check if need to interleave histories
+        if ( next &&
+             eventsTooClose(next, e)) {
 
-        if (transition) {
-            // Sanity check that the quantified variable assignment matches the current property instance
-            for (let i = 0; i < property.stateMachine[eventType].params.length; i++) {
-                const varname = property.stateMachine[eventType].params[i];
+            // Find interleaving block
+            let block = [];
+            let currIdx = i + 1;
+            let curr = events[currIdx]; // === next
 
-                if (property.quantifiedVariables.includes(varname)) { // This variable is used to determine the property instance
+            while (curr &&
+                   eventsTooClose(curr, e)) {
 
-                    if (eventParamsDict[varname] !== instance[varname]) {
-                        throw "ERROR: Encountered an event whose parameters don't match the instance.";
+                if ( e.invocation.S !== curr.invocation.S ) block.push[currIdx];
+                currIdx++;
+                curr = events[currIdx];
+            }
+
+            let trueBlock = block.length > 0;
+
+            if (trueBlock) {
+                states = states.map(state => {
+                    if (Object.keys(state.replacements).length === 0) { // No existing replacements. Simple.
+                        return [state].concat(block.map(repIdx => {
+                            const newState = {curr: state.curr,
+                                              compound: state.compound};
+                            newState.replacements = {};
+                            newState.replacements[i] = repIdx;
+                            newState.replacements[repIdx] = i;
+
+                            return newState;
+                        })).flat();
+                    } else { // Has existing replacements. A little more complicated.
+                        return [state].concat(block.map(repIdx => {
+                            const newState = {curr: state.curr,
+                                              compound: state.compound};
+
+                            newState.replacements = {};
+
+                            Object.assign(newState.replacements, state.replacements);
+
+                            if (newState.replacements[repIdx]) {
+                                newState.replacements[i] = newState.replacements[repIdx];
+                            } else {
+                                newState.replacements[i] = repIdx;
+                            }
+
+                            newState.replacements[repIdx] = i;
+
+                            return newState;
+                        }));
+                    }
+                });
+            }
+        }
+
+        states = states.map(state => {
+            let stateSpecificEvent;
+            if (state.replacements[i]) {
+                stateSpecificEvent = events[state.replacements[i]];
+                delete state.replacements[i];
+            } else {
+                stateSpecificEvent = e;
+            }
+
+            const eventType = stateSpecificEvent.type.S;
+            const eventParamsDict = convertParams(stateSpecificEvent.params);
+
+            // const eventInvocationUuid = e.invocation.S;
+
+
+
+            // KALEV: This feature is only partially supported, and entirely not documented.
+            // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
+            const transition =
+                  property.stateMachine[eventType]['ANY'] ?
+                  property.stateMachine[eventType]['ANY'] :
+                  property.stateMachine[eventType][state.curr];
+
+            if (transition) {
+                // Sanity check that the quantified variable assignment matches the current property instance
+                for (let i = 0; i < property.stateMachine[eventType].params.length; i++) {
+                    const varname = property.stateMachine[eventType].params[i];
+
+                    if (property.quantifiedVariables.includes(varname)) { // This variable is used to determine the property instance
+
+                        if (eventParamsDict[varname] !== instance[varname]) {
+                            throw "ERROR: Encountered an event whose parameters don't match the instance.";
+                        }
                     }
                 }
-            }
 
-            let update;
-            let toState;
+                let update;
+                let toState;
 
-            if (transition['GUARDED_TRANSITION']) {
-                const guardValuation = transition['GUARDED_TRANSITION'].guard(...Object.values(eventParamsDict));
+                if (transition['GUARDED_TRANSITION']) {
+                    const guardValuation = transition['GUARDED_TRANSITION'].guard(...Object.values(eventParamsDict));
 
-                if (guardValuation) {
-                    update = transition['GUARDED_TRANSITION'].onGuardHolds.update;
-                    toState = transition['GUARDED_TRANSITION'].onGuardHolds.to;
+                    if (guardValuation) {
+                        update = transition['GUARDED_TRANSITION'].onGuardHolds.update;
+                        toState = transition['GUARDED_TRANSITION'].onGuardHolds.to;
 
+                    } else {
+                        update = transition['GUARDED_TRANSITION'].onGuardViolated.update;
+                        toState = transition['GUARDED_TRANSITION'].onGuardViolated.to;
+                    }
                 } else {
-                    update = transition['GUARDED_TRANSITION'].onGuardViolated.update;
-                    toState = transition['GUARDED_TRANSITION'].onGuardViolated.to;
+                    update = transition.update;
+                    toState = transition.to;
                 }
-            } else {
-                update = transition.update;
-                toState = transition.to;
+                if (update)
+                    update(state.compound, ...Object.values(eventParamsDict));
+
+                state.curr = toState;
+
+                lastProcessedEvent = e;
+
+                if (toState in ['FAILURE', 'SUCCESS'])
+                    break;
             }
-            if (update)
-                update(state.compound, ...Object.values(eventParamsDict));
+            return state;
+        });
 
-            state.curr = toState;
+        // // Remove coalescing states with no replacements
+        // states = states.filter(state =>
+        //                        Object.keys(state.replacements).length !== 0 || // Keep if has replacements
+        //                        !states.has(anotherState =>
+        //                                    anotherState.curr === state.curr && // States coalesce
+        //                                    Object.keys(anotherState.replacements).length === 0)) // And other state also has no replacements
 
-            lastProcessedEvent = e;
+        // Remove coalescing states with equal replacements
+        //   Ignoring compound. (Let's call this step 2 of depracation. Can also say I don't remember what the point of that is anymore.)
+        states = states.filter(state =>
+                               !states.has(anotherState =>
+                                           anotherState.curr === state.curr &&
+                                           Object.keys(anotherState.replacements).length === Object.keys(state.replacements).length &&
+                                           Object.keys(anotherState.replacements).reduce((acc, curr, idx, anotherReplacements) =>
+                                                                                         acc &&
+                                                                                         state.replacements[idx] === curr,
+                                                                                         true)));
 
-            if (toState in ['FAILURE', 'SUCCESS'])
-                break;
-        }
     }
     return {
-        state,
+        states,
         lastProcessedEvent,
     };
 }
