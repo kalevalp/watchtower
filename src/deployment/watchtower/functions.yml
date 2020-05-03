@@ -3,7 +3,7 @@
 ##
 ##   Log Ingestion
 watchtower-ingestion:
-  handler: watchtower/watchtower-log-ingestion.handler
+  handler: ${self:custom.wtPathPrefix}watchtower/watchtower-log-ingestion.handler
   events:
     - stream:
         arn:
@@ -23,7 +23,7 @@ watchtower-ingestion:
 ##
 ##   Log Checker
 watchtower-monitor:
-  handler: watchtower/watchtower-monitor.handler
+  handler: ${self:custom.wtPathPrefix}watchtower/watchtower-monitor.handler
   # events:
   # - stream:
   #     arn:
@@ -46,7 +46,7 @@ watchtower-monitor:
 ##
 ##   Monitor state machine trigger
 wt-monitor-trigger:
-  handler: watchtower/watchtower-monitor-trigger.handler
+  handler: ${self:custom.wtPathPrefix}watchtower/watchtower-monitor-trigger.handler
   events:
   - stream:
       arn:

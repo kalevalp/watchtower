@@ -24,30 +24,31 @@ provider:
         # Fn::ImportValue: watchtower-events-kinesis-stream-arn   # When deploying multiple separate stacks
 
 functions:
-  watchtower-ingestion: ${file(watchtower/functions.yml):watchtower-ingestion}   # Event ingestion function
-  watchtower-monitor:   ${file(watchtower/functions.yml):watchtower-monitor}     # Event monitor
-  wt-monitor-trigger:   ${file(watchtower/functions.yml):wt-monitor-trigger}     # A function that triggers the event monitoring step-functions state machine
+  watchtower-ingestion: ${file(${self:custom.wtPathPrefix}watchtower/functions.yml):watchtower-ingestion}   # Event ingestion function
+  watchtower-monitor:   ${file(${self:custom.wtPathPrefix}watchtower/functions.yml):watchtower-monitor}     # Event monitor
+  wt-monitor-trigger:   ${file(${self:custom.wtPathPrefix}watchtower/functions.yml):wt-monitor-trigger}     # A function that triggers the event monitoring step-functions state machine
 
 resources:
   Resources:
-    EventsTable:          ${file(watchtower/ddbTables.yml):Resources.EventsTable}
-    CheckpointsTable:     ${file(watchtower/ddbTables.yml):Resources.CheckpointsTable}
-    InvocationStream:     ${file(watchtower/kinesisStreams.yml):Resources.InvocationStream}
-    EventsStream:         ${file(watchtower/kinesisStreams.yml):Resources.EventsStream}
-    EventWriterRole:      ${file(watchtower/iamRoles.yml):Resources.EventWriterRole}
-    EventReaderRole:      ${file(watchtower/iamRoles.yml):Resources.EventReaderRole}
-    StateMachineListExec: ${file(watchtower/iamRoles.yml):Resources.StateMachineListExec}
+    EventsTable:          ${file(${self:custom.wtPathPrefix}watchtower/ddbTables.yml):Resources.EventsTable}
+    CheckpointsTable:     ${file(${self:custom.wtPathPrefix}watchtower/ddbTables.yml):Resources.CheckpointsTable}
+    InvocationStream:     ${file(${self:custom.wtPathPrefix}watchtower/kinesisStreams.yml):Resources.InvocationStream}
+    EventsStream:         ${file(${self:custom.wtPathPrefix}watchtower/kinesisStreams.yml):Resources.EventsStream}
+    EventWriterRole:      ${file(${self:custom.wtPathPrefix}watchtower/iamRoles.yml):Resources.EventWriterRole}
+    EventReaderRole:      ${file(${self:custom.wtPathPrefix}watchtower/iamRoles.yml):Resources.EventReaderRole}
+    StateMachineListExec: ${file(${self:custom.wtPathPrefix}watchtower/iamRoles.yml):Resources.StateMachineListExec}
   Outputs:
-    WTCheckerMachine: ${file(watchtower/outputs.yml):Outputs.WTCheckerMachine}
-    WTEventsKinesisStream: ${file(watchtower/outputs.yml):Outputs.WTEventsKinesisStream}
-    WTEventsKinesisStreamARN: ${file(watchtower/outputs.yml):Outputs.WTEventsKinesisStreamARN}
+    WTCheckerMachine: ${file(${self:custom.wtPathPrefix}watchtower/outputs.yml):Outputs.WTCheckerMachine}
+    WTEventsKinesisStream: ${file(${self:custom.wtPathPrefix}watchtower/outputs.yml):Outputs.WTEventsKinesisStream}
+    WTEventsKinesisStreamARN: ${file(${self:custom.wtPathPrefix}watchtower/outputs.yml):Outputs.WTEventsKinesisStreamARN}
 
 
 custom:
   # handlerFilePostfix: '-wrapper'
   # handlerFilePostfix: ''
   handlerFilePostfix: ${env:WT_RUN_NO_RECORDING, '-wrapper'}
+  wtPathPrefix: "src/"
 
 stepFunctions:
   stateMachines:
-    checker: ${file(watchtower/stateMachine.yml):stateMachines.checker}
+    checker: ${file(${self:custom.wtPathPrefix}watchtower/stateMachine.yml):stateMachines.checker}
