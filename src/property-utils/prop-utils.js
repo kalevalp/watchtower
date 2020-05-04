@@ -1,4 +1,8 @@
-const reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
+const debug = process.env.DEBUG_WATCHTOWER;
+const util = require('util');
+
+
+let reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
 if (!reorderGranularity) reorderGranularity = 2; // Default to 2ms granularity
 
 function getInstance(prop, eventParams, eventType) {
@@ -275,6 +279,8 @@ function runProperty(property, events, instance, fromStates) {
             }
         }
 
+        if (debug) console.log("Running the property.\nStates are: ", util.inspect(states));
+
         states = states.map(state => {
             let stateSpecificEvent;
             if (state.replacements[i]) {
@@ -336,30 +342,36 @@ function runProperty(property, events, instance, fromStates) {
 
                 lastProcessedEvent = e;
 
-                if (toState in ['FAILURE', 'SUCCESS'])
-                    break;
+                // if (toState in ['FAILURE', 'SUCCESS']) // TODO - Optimize a run reaching a terminal
+                //     break;
             }
             return state;
         });
 
-        // // Remove coalescing states with no replacements
-        // states = states.filter(state =>
-        //                        Object.keys(state.replacements).length !== 0 || // Keep if has replacements
-        //                        !states.has(anotherState =>
-        //                                    anotherState.curr === state.curr && // States coalesce
-        //                                    Object.keys(anotherState.replacements).length === 0)) // And other state also has no replacements
-
-        // Remove coalescing states with equal replacements
-        //   Ignoring compound. (Let's call this step 2 of depracation. Can also say I don't remember what the point of that is anymore.)
-        states = states.filter(state =>
-                               !states.has(anotherState =>
-                                           anotherState.curr === state.curr &&
-                                           Object.keys(anotherState.replacements).length === Object.keys(state.replacements).length &&
-                                           Object.keys(anotherState.replacements).reduce((acc, curr, idx, anotherReplacements) =>
-                                                                                         acc &&
-                                                                                         state.replacements[idx] === curr,
-                                                                                         true)));
-
+        // Remove coalescing states with no replacements
+        states = states.reduce((acc,elem) => {
+            if (Object.keys(elem.replacements).length !== 0 || // Keep if has replacements
+                !acc.some(other =>
+                          other.curr === elem.curr && // States coalesce
+                          Object.keys(other.replacements).length === 0)) { // And other state also has no replacements
+                acc.push(elem);
+            }
+            return acc;
+        }, []);
+        // // remove coalescing states with equal replacements
+        // //   Ignoring compound. (Let's call this step 2 of depracation. Can also say I don't remember what the point of that is anymore.)
+        // states = states.reduce((acc, elem) => {
+        //     if (!acc.some(other =>
+        //                   other.curr === elem.curr &&
+        //                   Object.keys(other.replacements).length === Object.keys(elem.replacements).length &&
+        //                   Object.keys(other.replacements).reduce((acc, curr, idx) =>
+        //                                                          acc &&
+        //                                                          elem.replacements[idx] === curr,
+        //                                                          true))) {
+        //         acc.push(curr);
+        //     }
+        //     return acc;
+        // }, []);
     }
     return {
         states,
