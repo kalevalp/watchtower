@@ -11,7 +11,7 @@ const checkpointTable = process.env['WATCHTOWER_CHECKPOINT_TABLE'];
 const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
 
-const reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
+let reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
 if (!reorderGranularity) reorderGranularity = 2; // Default to 2ms granularity
 
 function sleep(ms) {
@@ -60,8 +60,8 @@ function kinesisListenerFactory (handleMonitorInstance) {
     }
 }
 
-function updateInstanceStatus(instance, isDischarged, tableName, state, timestamp, eventID) {
-    if (debug) console.log("Updating instance status: ", JSON.stringify({instance, isDischarged, tableName, state, timestamp, eventID}));
+function updateInstanceStatus(instance, isDischarged, tableName, states, timestamp, eventID) {
+    if (debug) console.log("Updating instance status: ", JSON.stringify({instance, isDischarged, tableName, states, timestamp, eventID}));
 
     const params = {};
     params.ExpressionAttributeNames = { "#ST": "Status" };
@@ -74,7 +74,7 @@ function updateInstanceStatus(instance, isDischarged, tableName, state, timestam
         };
         params.UpdateExpression = "SET #ST = :status";
     } else {
-        params.ExpressionAttributeNames[ "#S" ]  = "State";
+        params.ExpressionAttributeNames[ "#SS" ]  = "States";
         params.ExpressionAttributeNames[ "#TS" ] = "TimeStamp";
         params.ExpressionAttributeNames[ "#EID" ] = "EventID";
 
@@ -82,8 +82,8 @@ function updateInstanceStatus(instance, isDischarged, tableName, state, timestam
             ":status": {
                 S: "ACTIVE"
             },
-            ":state": {
-                S: state
+            ":states": {
+                SS: states
             },
             ":time": {
                 N: timestamp
@@ -92,7 +92,7 @@ function updateInstanceStatus(instance, isDischarged, tableName, state, timestam
                 S: eventID
             },
         };
-        params.UpdateExpression = "SET #ST = :status, #S = :state, #TS = :time, #EID = :eventid"
+        params.UpdateExpression = "SET #ST = :status, #SS = :states, #TS = :time, #EID = :eventid"
     }
     params.Key =  {"propinst" : {S : instance}};
     params.TableName = tableName;
@@ -133,47 +133,47 @@ function produceOrders(eventList) {
     // return produceOrdersRec(sorted);
 }
 
-function produceOrdersRec(sorted) {
-    let trimmedPairs;
-    let i;
-    for (i = 0; i < sorted.length-1; i++) {
-        if ( Number(sorted[i+1].timestamp.N) - Number(sorted[i].timestamp.N) <= reorderGranularity) {
+// function produceOrdersRec(sorted) {
+//     let trimmedPairs;
+//     let i;
+//     for (i = 0; i < sorted.length-1; i++) {
+//         if ( Number(sorted[i+1].timestamp.N) - Number(sorted[i].timestamp.N) <= reorderGranularity) {
 
-            // Find interleaving block
-            let blockEnd = i;
-            let trueBlock = false;
+//             // Find interleaving block
+//             let blockEnd = i;
+//             let trueBlock = false;
 
-            // TODO - make sure I did not confuse the indices here.
-            do {
-                blockEnd++;
-                trueBlock = trueBlock || sorted[blockEnd].executionId === sorted[i].executionId; // TODO - read the correct field here.
-            } while (Number(sorted[blockEnd].timestamp.N) - Number(sorted[i].timestamp.N) <= reorderGranularity &&
-                     blockEnd < sorted.length - 1); // Don't want to overstep array
+//             // TODO - make sure I did not confuse the indices here.
+//             do {
+//                 blockEnd++;
+//                 trueBlock = trueBlock || sorted[blockEnd].executionId === sorted[i].executionId; // TODO - read the correct field here.
+//             } while (Number(sorted[blockEnd].timestamp.N) - Number(sorted[i].timestamp.N) <= reorderGranularity &&
+//                      blockEnd < sorted.length - 1); // Don't want to overstep array
 
-            if (!trueBlock) continue; // Entire block composed of events from a different execution, no need to recurse
+//             if (!trueBlock) continue; // Entire block composed of events from a different execution, no need to recurse
 
-            // Prepare recursive call
-            trimmed = [...Array(blockEnd-i-1).keys()]
-                .filter(idx => sorted[i + idx + 1].executionId === sorted[i].executionId) // TODO - read the correct field here.
-                .map(idx => {
-                    const trimmedList = sorted.slice(i+1);
-                    const switchedValue = trimmedList[idx];
-                    trimmedList[idx] = sorted[i];
-                    return ({switchedValue, trimmedList});
-                });
-            trimmed.push({sorted[i], sorted.slice(i+1)}); // No reordering recursion.
+//             // Prepare recursive call
+//             trimmed = [...Array(blockEnd-i-1).keys()]
+//                 .filter(idx => sorted[i + idx + 1].executionId === sorted[i].executionId) // TODO - read the correct field here.
+//                 .map(idx => {
+//                     const trimmedList = sorted.slice(i+1);
+//                     const switchedValue = trimmedList[idx];
+//                     trimmedList[idx] = sorted[i];
+//                     return ({switchedValue, trimmedList});
+//                 });
+//             trimmed.push({sorted[i], sorted.slice(i+1)}); // No reordering recursion.
 
-            break;
-        }
-    }
+//             break;
+//         }
+//     }
 
-    // Recursive call
-    const head = sorted.slice(0,i);
-    return trimmedPairs.map(pair => {
-        const recResult = produceOrdersRec(pair.trimmedPairs);
-        return recResult.map(tail => head.concat([pair.switchedValue], tail));
-    }).flat();
-}
+//     // Recursive call
+//     const head = sorted.slice(0,i);
+//     return trimmedPairs.map(pair => {
+//         const recResult = produceOrdersRec(pair.trimmedPairs);
+//         return recResult.map(tail => head.concat([pair.switchedValue], tail));
+//     }).flat();
+// }
 
 function monitorFactory(properties) {
     if (debug) {
@@ -285,7 +285,7 @@ function monitorFactory(properties) {
         return Promise.all(ddbCalls)
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
             .then(results => produceOrders(results))
-            .then(order => {
+            .then(async order => {
                 if (debug) console.log("Events: ", JSON.stringify(order));
                 if (debug) console.log("Events.timestamps: ", JSON.stringify(order.map(e => e.timestamp)));
 
@@ -297,13 +297,14 @@ function monitorFactory(properties) {
 
                 if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
-                const intermediateState = proputils.runProperty(prop, stableEvents, instance);
-                const state = intermediateState.state;
-                const lastProcessedEvent = intermediateState.lastProcessedEvent;
+                const postRunStatus = proputils.runProperty(prop, stableEvents, instance);
+                const states = postRunStatus.states;
+                const lastProcessedEvent = postRunStatus.lastProcessedEvent;
 
                 // Handling the state the FSM ended up in after processing all the events.
-                if (state.curr === 'FAILURE') {
+                if (states.some(state => state.curr === 'FAILURE')) {
 
+                    // TODO - This is not necessarily the offending event.
                     if (profile) {
                         const profileReport = {
                             instance,
@@ -333,23 +334,22 @@ function monitorFactory(properties) {
                     // await ses.sendEmail(params).promise();
 
                     console.log(`Property ${prop.name} was violated for property instance ${JSON.stringify(instance)}. Failure triggered by event produced by Lambda invocation ${lastProcessedEvent.invocation.S}.`);
-                } else if (state.curr === 'SUCCESS') {
+                } else if (states.some(state => state.curr === 'SUCCESS')) {
                     console.log(`Property ${prop.name} holds for property instance ${JSON.stringify(instance)}`);
                 } else {
                     console.log(`Property ${prop.name} was not violated (but might be violated by future events) for property instance ${JSON.stringify(instance)}`);
                 }
 
                 // GC
-                if (['FAILURE', 'SUCCESS'].includes(intermediateState.state.curr)){
-                    if (debug) console.log(`Discharged property. intermediateState: `, JSON.stringify(intermediateState));
+                if (states.some(state => ['FAILURE', 'SUCCESS'].includes(state.curr))) {
+                    if (debug) console.log(`Discharged property. postRunStatus: `, JSON.stringify(postRunStatus));
                     // Mark instance as discharged
                     await updateInstanceStatus(proputils.getInstance(prop,instance), true, checkpointTable);
                 } else {
                     // Checkpoint the stable part of the instance execution
-                    const lastEvent = intermediateState.lastProcessedEvent;
-                    if (debug) console.log("Checkpointing stable. Last event: ", JSON.stringify(lastEvent));
-                    if (lastEvent && intermediateState.state && lastEvent.timestamp && lastEvent.id)
-                        await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, intermediateState.state.curr, lastEvent.timestamp.N, lastEvent.id.S);
+                    if (debug) console.log("Checkpointing stable. Last event: ", JSON.stringify(lastProcessedEvent));
+                    if (lastProcessedEvent && postRunStatus.states && lastProcessedEvent.timestamp && lastProcessedEvent.id)
+                        await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, postRunStatus.states.map(state => state.curr), lastProcessedEvent.timestamp.N, lastProcessedEvent.id.S);
                 }
 
                 // Mark TTL for all stable instance events (not projections).
