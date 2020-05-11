@@ -279,7 +279,11 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 .then(() => Promise.resolve(retVal));
         }
     } else {
-	return async (event, context, callback) => {
+	return (event, context, callback) => {
+            // Guarantee that the recorder promises terminate.
+            // This might clash with guest code, which is unfortunate but unavoidable.
+            context.callbackWaitsForEmptyEventLoop = true;
+
 	    promisesToWaitFor = [];
             operationTotalOrder = [];
 
@@ -296,12 +300,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 rawRecorder({event, context, executionHistory, handlerName: originalLambdaHandler}, opIdx, true);
             }
 
-	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
-		return Promise.all(promisesToWaitFor)
-                    .then(() => rnrRecording ? rawRecorder({operationTotalOrder, handlerName: originalLambdaHandler},'opTO',true) : true)
-		    .then(() => callback(err, success))
-                    .catch((errVal) => callback(errVal));
-	    });
+            // KALEV - dropping support for rnr in callbacks. Will revisit at some point later.
+            return vmExports[originalLambdaHandler](event, context, callback);
 	}
     }
 }
