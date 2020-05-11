@@ -279,7 +279,7 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
                 .then(() => Promise.resolve(retVal));
         }
     } else {
-	return (event, context, callback) => {
+	return async (event, context, callback) => {
 	    promisesToWaitFor = [];
             operationTotalOrder = [];
 
@@ -299,8 +299,8 @@ function createRecordingHandler(originalLambdaFile, originalLambdaHandler, mock,
 	    return vmExports[originalLambdaHandler](event, context, (err, success) => {
 		return Promise.all(promisesToWaitFor)
                     .then(() => rnrRecording ? rawRecorder({operationTotalOrder, handlerName: originalLambdaHandler},'opTO',true) : true)
-		    .then(() => callback(err, success),
-			  (errVal) => callback(errVal));
+		    .then(() => callback(err, success))
+                    .catch((errVal) => callback(errVal));
 	    });
 	}
     }
