@@ -12,7 +12,7 @@ const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
 
 let reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
-if (!reorderGranularity) reorderGranularity = 2; // Default to 2ms granularity
+if (!reorderGranularity) reorderGranularity = 10; // Default to 10ms granularity
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
