@@ -130,7 +130,7 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
 
                 entries.push(entry);
 
-                if (propTerm[prop.name].has(eventType)) { // Terminating transition
+                if (propTerm[prop.name].includes(eventType)) { // Terminating transition
                     for (const proj of prop.projections) {
                         const quantifiedProj = {};
                         for (const qvar of proj) {
@@ -238,4 +238,3 @@ async function handleLogEvents (logEvents, functionTimeout, properties, propTerm
 module.exports.createIngestionHandler = createKinesisIngestionHandler;
 module.exports.createKinesisIngestionHandler = createKinesisIngestionHandler;
 module.exports.createLogIngestionHandler = createLogIngestionHandler;
-
