@@ -22,10 +22,6 @@ function getInstance(prop, eventParams, eventType) {
     return propinstKey;
 }
 
-function setsEqual (a, b) {
-    return a.size === b.size && [...a].every(value => b.has(value));
-}
-
 function propToGraph(prop) {
 
     const graph = {};
@@ -100,49 +96,6 @@ function getTerminatingStatesInternal(allStates, graph) {
     return terminating;
 }
 
-function getReachableStates(graph) {
-    const stateStack = ['INITIAL'];
-    const reachable = new Set();
-
-    while (stateStack.length > 0) {
-        const curr = stateStack.pop();
-
-        if (!reachable.has(curr)) {
-            reachable.add(curr);
-
-            if (graph[curr]) { // Not a terminal state
-                for (const transition of graph[curr]) {
-                    stateStack.push(transition.to);
-                }
-            }
-        }
-    }
-    return reachable;
-}
-
-function stateMachineSanityChecks(property) {
-
-    const graph = propToGraph(property);
-
-    const allStates = getAllStates(graph);
-    const terminating = getTerminatingStatesInternal(allStates, graph);
-
-    for (const state of terminating) {
-        if (state !== 'SUCCESS' && state !== 'FAILURE') {
-            throw `ERROR: MALFORMED STATE MACHINE: The state ${state} is a terminating state (i.e., it has no outgoing edges) --- only SUCCESS and FAILURE states can be terminating states.`
-        }
-    }
-
-    if (terminating.size === 0) {
-        throw `ERROR: MALFORMED STATE MACHINE: No terminating states found in state machine. Must have either a SUCCESS or FAILURE state.`
-    }
-
-    const reachable = getReachableStates(graph);
-
-    if (setsEqual(reachable, allStates))
-        console.log('WARNING: UNREACHABLE STATES IN STATE MACHINE');
-}
-
 function getTerminatingTransitions(property) {
     const graph = propToGraph(property);
     const terminating = getTerminatingStates(graph)
@@ -158,31 +111,6 @@ function getTerminatingTransitions(property) {
     }
 
     return terminatingTransitions;
-}
-
-// Kind of ignores guarded transitions at the moment.
-function getReachabilityMap(property) {
-    const states = getReachableStates(propToGraph(property));
-    const reachabilityMap = {};
-
-    for (const state of states) {
-        const stack = [state];
-        const reachable = [];
-        while (stack.length !== 0){
-            const curr = stack.pop();
-            for (const transition of Object.values(property.stateMachine)) {
-                if (transition[curr] &&
-                    !reachable.includes(transition[curr].to)) {
-                    reachable.push(transition[curr].to);
-                    stack.push(transition[curr].to);
-                }
-            }
-        }
-        reachabilityMap[state] = reachable;
-    }
-
-    return reachabilityMap;
-
 }
 
 function convertParams(params) {
@@ -379,49 +307,382 @@ function runProperty(property, events, instance, fromStates) {
     };
 }
 
-// stablePrefix is the part of the execution that is guaranteed to be consistent
-// partialTail is the part of the execution that might be missing some events
-// stablePrefix::partialTail lead to a violation
-// expected type of execution: events, as returned for DDB
-// Return: false if violation cannot be avoided via an extension of partialTail
-//         true if it can be
-//         TODO - consider returning the potential event sequence.
-function hasNonViolatingExtension(property, stablePrefix, partialTail, instance) {
-    if (partialTail.length === 0) return false;
-
-    const reachabilityMap = getReachabilityMap(property);
-    let {state} = runProperty(property,stablePrefix, instance);
-
-    function extensionSearch(fromState, tailSuffix, targetState) {
-        if (tailSuffix.length > 0) {
-            const event = tailSuffix[0];
-            const reachable = reachabilityMap[fromState];
-            const reachableAfterStep = [];
-            for (state of reachable) {
-                if (property.stateMachine[event.type.S] && property.stateMachine[event.type.S][state]) {
-                    const toState = property.stateMachine[event.type.S][state].to; // TODO - make sure type is correct
-                    if (!reachableAfterStep.includes(toState))
-                        reachableAfterStep.push(toState);
-                }
-            }
-            if (tailSuffix.length === 1) { // Final transition
-                if (!reachableAfterStep.every(state => state === 'FAILURE')) {
-                    return true;
-                }
-            }
-            for (state of reachableAfterStep) {
-                const mayReachAnotherState = extensionSearch(state, tailSuffix.slice(1), targetState);
-                if (mayReachAnotherState)
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    return extensionSearch(state.curr, partialTail)
-}
-
 module.exports.getTerminatingTransitions = getTerminatingTransitions;
-module.exports.hasNonViolatingExtension = hasNonViolatingExtension;
 module.exports.runProperty = runProperty;
 module.exports.getInstance = getInstance;
+
+// if (require.main === module) {
+//     const createProp = (id) => {
+//         const prop = {
+//             name: `dummy-${id}`,
+//             quantifiedVariables: ['someid'],
+//             projections: [['someid']],
+//             stateMachine: {}
+//         }
+
+//         prop.stateMachine[`EVENT_TYPE_A_${id}`] = {
+// 	    params: ['someid'],
+// 	    'INITIAL': { to: 'state1', },
+// 	    'state1':  { to: 'INITIAL', },
+// 	    'state2':  { to: 'INITIAL', },
+//         }
+
+//         prop.stateMachine[`EVENT_TYPE_B_${id}`] = {
+// 	    params: ['someid'],
+// 	    'state1':  { to: 'state2', },
+// 	    'state2':  { to: 'state1', },
+//         }
+
+//         prop.stateMachine[`EVENT_TYPE_C_${id}`] = {
+// 	    params: ['someid'],
+// 	    'INITIAL': { to: 'SUCCESS', },
+//             'state1' : { to: 'SUCCESS', },
+//             'state2' : { to: 'FAILURE', },
+//         }
+
+//         return prop;
+//     };
+
+//     const p = createProp(13);
+
+//     const util = require('util');
+
+//     // console.log(util.inspect(p));
+
+//     console.log(getTerminatingTransitions(p));
+
+//     const rwprops = [{
+//         name: 'gdpr7',
+//         quantifiedVariables: ['user'],
+//         projections: [['user']],
+//         stateMachine: {
+//             'GOT_CONSENT': {
+//                 params: [
+//                     'user'
+//                 ],
+//                 'INITIAL' : {
+//                     to: 'consented'
+//                 },
+//             },
+//             'REVOKED_CONSENT': {
+//                 params: [
+//                     'user'
+//                 ],
+//                 'consented': {
+//                     to: 'INITIAL'
+//                 }
+//             },
+
+//             'PROCESSING_DATA': {
+//                 params: [
+//                     'user'
+//                 ],
+//                 'INITIAL': {
+//                     to: 'FAILURE'
+//                 },
+//                 'consented': {
+//                     to: 'SUCCESS'
+//                 }
+//             },
+//         }
+//     },
+//     {
+//         name: 'tests-i',
+//         quantifiedVariables: ['article_slug', 'user'],
+//         projections: [['user'], ['article_slug', 'user']],
+//         stateMachine: {
+//             'LOGGED_IN': {
+//                 params: ['user'],
+//                 'INITIAL' : {
+//                     to: 'logged-in'
+//                 },
+//             },
+//             'LOGGED_OUT': {
+//                 params: ['user'],
+//                 'logged-in' : {
+//                     to: 'INITIAL'
+//                 },
+//             },
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug', 'user'],
+//                 'INITIAL' : {
+//                     to: 'FAILURE'
+//                 },
+//                 'logged-in' : {
+//                     to: 'SUCCESS'
+//                 },
+//             },
+//         }
+//     },
+//     {
+//         name: 'tests-ii',
+//         quantifiedVariables: ['article_slug'],
+//         projections: [['article_slug']],
+//         stateMachine: {
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'INITIAL': {
+//                     to: 'published'
+//                 },
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'published' : {
+//                     to: 'INITIAL'
+//                 },
+//             },
+//             'RETRIEVED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'INITIAL': {
+//                     to: 'FAILURE'
+//                 },
+//                 'published' : {
+//                     to: 'SUCCESS'
+//                 },
+//             },
+//         }
+//     },
+//     {
+//         name: 'tests-iii',
+//         quantifiedVariables: ['article_slug', 'user'],
+//         projections: [['article_slug', 'user'], ['user']],
+//         stateMachine: {
+//             'LOGGED_IN': {
+//                 params: ['user'],
+//                 'INITIAL' : {
+//                     to: 'logged-in'
+//                 },
+//                 'published-logged-out': {
+//                     to: 'published'
+//                 }
+//             },
+//             'LOGGED_OUT': {
+//                 params: ['user'],
+//                 'logged-in' : {
+//                     to: 'INITIAL'
+//                 },
+//                 'published': {
+//                     to: 'published-logged-out'
+//                 }
+//             },
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug', 'user'],
+//                 'INITIAL': {
+//                     to: 'FAILURE'
+//                 },
+//                 'logged-in': {
+//                     to: 'published'
+//                 }
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug', 'user'],
+//                 'published' : {
+//                     to: 'deleted'
+//                 },
+//                 'logged-in': {
+//                     to: 'FAILURE'
+//                 },
+//                 'INITIAL': {
+//                     to: 'FAILURE'
+//                 },
+//                 'published-logged-out': {
+//                     to: 'FAILURE'
+//                 },
+//                 'deleted': {
+//                     to: 'FAILURE'
+//                 }
+//             },
+//         }
+//     },
+//     {
+//         name: 'tests-iv',
+//         quantifiedVariables: ['article_slug', 'user'],
+//         projections: [['article_slug', 'user'], ['user']],
+//         stateMachine: {
+//             'LOGGED_IN': {
+//                 params: ['user'],
+//                 'INITIAL' : {
+//                     to: 'logged-in'
+//                 },
+//                 'published': {
+//                     to: 'published-logged-in'
+//                 }
+//             },
+//             'LOGGED_OUT': {
+//                 params: ['user'],
+//                 'logged-in' : {
+//                     to: 'INITIAL'
+//                 },
+//                 'published-logged-in': {
+//                     to: 'published'
+//                 }
+//             },
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'INITIAL': {
+//                     to: 'published'
+//                 },
+//                 'logged-in': {
+//                     to: 'published-logged-in'
+//                 }
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'published-logged-in' : {
+//                     to: 'logged-in'
+//                 },
+//                 'published': {
+//                     to: 'INITIAL'
+//                 },
+//             },
+//             'FAVED': {
+//                 params: ['article_slug', 'user'],
+//                 'published-logged-in': {
+//                     to: 'SUCCESS'
+//                 },
+//                 'published': {
+//                     to: 'FAILURE'
+//                 },
+//                 'INITIAL': {
+//                     to: 'FAILURE'
+//                 },
+//                 'logged-in': {
+//                     to: 'FAILURE'
+//                 }
+//             }
+//         }
+//     },
+//     {
+//         name: 'tests-vi',
+//         quantifiedVariables: ['article_slug'],
+//         projections: [['article_slug']],
+//         stateMachine: {
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'INITIAL': {
+//                     to: 'published'
+//                 },
+//             },
+//             'LISTED': {
+//                 params: ['article_slug'],
+//                 'INITIAL': {
+//                     to: 'FAILURE'
+//                 },
+//                 'published': {
+//                     to: 'SUCCESS'
+//                 },
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'published': {
+//                     to: 'INITIAL'
+//                 },
+//             },
+//         },
+//     },
+//     // This is an interesting example for the chain properties thing.
+//     {
+//         name: 'tests-vii',
+//         quantifiedVariables: ['article_slug', 'user', 'reader'],
+//         projections: [['article_slug', 'user', 'reader'], ['article_slug', 'user'], ['article_slug'],['user','reader']],
+//         stateMachine: {
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug', 'user'],
+//                 'INITIAL': { to: 'published' },
+//                 'followed': { to: 'published_and_followed' },
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'published': { to: 'INITIAL' },
+//                 'published_and_followed': { to: 'followed' },
+//             },
+//             'FOLLOWED': {
+//                 params: ['user', 'reader'],
+//                 'INITIAL': {to: 'followed'},
+//                 'published': {to: 'published_and_followed'},
+//             },
+//             'UNFOLLOWED': {
+//                 params: ['user', 'reader'],
+//                 'followed': {to: 'INITIAL'},
+//                 'published_and_followed': {to: 'published'},
+//             },
+//             'IN_FEED': { // The author id is actually not really necessary here.
+//                 // Can do without it, need it for the property condition.
+//                 params: ['article_slug', 'user', 'reader'],
+//                 'INITIAL': { to: 'FAILURE' },
+//                 'published': { to: 'FAILURE' },
+//                 'followed': {to: 'FAILURE'},
+//                 'published_and_followed': {to: 'SUCCESS'},
+//             },
+//         },
+//     },
+//     {
+//         name: 'tests-viii',
+//         quantifiedVariables: ['article_slug', 'comment_uuid', 'user'],
+//         projections: [['article_slug', 'comment_uuid', 'user'], ['article_slug'], ['user']],
+//         stateMachine: {
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'INITIAL': { to: 'published' },
+//                 'logged-in' : { to: 'published-and-logged-in' },
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'published': { to: 'INITIAL' },
+//                 'published-and-logged-in' : { to: 'logged-in' },
+//             },
+//             'LOGGED_IN': {
+//                 params: ['user'],
+//                 'INITIAL' : { to: 'logged-in' },
+//                 'published': { to: 'published-and-logged-in' },
+//             },
+//             'LOGGED_OUT': {
+//                 params: ['user'],
+//                 'logged-in' : { to: 'INITIAL' },
+//                 'published-and-logged-in': { to: 'published' },
+//             },
+//             'COMMENTED': {
+//                 params: ['article_slug', 'comment_uuid', 'user'],
+//                 'INITIAL': { to: 'FAILURE' },
+//                 'logged-in': { to: 'FAILURE' },
+//                 'published': { to: 'FAILURE' },
+//                 'published-and-logged-in': { to: 'SUCCESS' },
+//             },
+//         },
+//     },
+//     {
+//         name: 'tests-ix',
+//         quantifiedVariables: ['article_slug', 'comment_uuid'],
+//         projections: [['article_slug', 'comment_uuid'], ['article_slug']],
+//         stateMachine: {
+//             'PUBLISHED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'INITIAL': { to: 'published' },
+//             },
+//             'DELETED_ARTICLE': {
+//                 params: ['article_slug'],
+//                 'published': { to: 'INITIAL' },
+//             },
+//             'COMMENTED': {
+//                 params: ['article_slug', 'comment_uuid'],
+//                 'INITIAL': { to: 'FAILURE' },
+//                 'published': { to: 'commented' },
+//             },
+//             'DELETED_COMMENT': {
+//                 params: ['article_slug', 'comment_uuid'],
+//                 'INITIAL': { to: 'FAILURE' },
+//                 'commented': { to: 'SUCCESS' }, // won't get the same comment id twice
+//                 // 'published': { to: 'FAILURE' },
+//             },
+//             'RETRIEVED_COMMENT': {
+//                 params: ['article_slug', 'comment_uuid'],
+//                 'INITIAL': { to: 'FAILURE' },
+//                 'published': { to: 'FAILURE' },
+//     		'commented': { to: 'SUCCESS' },
+//             }
+//         },
+//     }];
+
+//     console.log(rwprops.map(pr => getTerminatingTransitions(pr)));
+
+// }
