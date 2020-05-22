@@ -1,6 +1,6 @@
 {
   "name": "watchtower-monitor",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "",
   "main": "monitor.js",
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "big-integer": "^1.6.48",
-    "watchtower-property-utils": "^1.4.2"
+    "watchtower-property-utils": "^1.4.9"
   },
   "files": [
     "monitor.js"
