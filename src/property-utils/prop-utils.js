@@ -3,7 +3,7 @@ const util = require('util');
 
 
 let reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
-if (!reorderGranularity) reorderGranularity = 2; // Default to 2ms granularity
+if (!reorderGranularity) reorderGranularity = 10; // Default to 10ms granularity
 
 function getInstance(prop, eventParams, eventType) {
     let params;
