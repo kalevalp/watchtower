@@ -22,95 +22,13 @@ function getInstance(prop, eventParams, eventType) {
     return propinstKey;
 }
 
-function propToGraph(prop) {
-
-    const graph = {};
-
-    for (const event in prop.stateMachine) { if (prop.stateMachine.hasOwnProperty(event)) {
-        const eventTransitions = prop.stateMachine[event];
-        for (const fromState in eventTransitions) { if (eventTransitions.hasOwnProperty(fromState)) {
-            if ( fromState !== 'filter' && fromState !== 'params') {
-                if (!graph[fromState])
-                    graph[fromState]= [];
-
-                if (eventTransitions[fromState]['GUARDED_TRANSITION']) {
-                    const trueTransition = {
-                        to : eventTransitions[fromState]['GUARDED_TRANSITION'].onGuardHolds.to,
-                        transition : event,
-                        guardedTransition : true,
-                        guard : eventTransitions[fromState]['GUARDED_TRANSITION'].guard,
-                        update : eventTransitions[fromState]['GUARDED_TRANSITION'].onGuardHolds.update,
-                    };
-                    const falseTransition = {
-                        to : eventTransitions[fromState]['GUARDED_TRANSITION'].onGuardViolated.to,
-                        transition : event,
-                        guardedTransition : true,
-                        guard : `Negation of ${eventTransitions[fromState]['GUARDED_TRANSITION'].guard}`,
-                        update : eventTransitions[fromState]['GUARDED_TRANSITION'].onGuardViolated.update,
-                    };
-
-                    graph[fromState].push(trueTransition);
-                    graph[fromState].push(falseTransition);
-                } else {
-                    const trans = {
-                        to : eventTransitions[fromState].to,
-                        transition : event,
-                        guardedTransition : false,
-                        update : eventTransitions[fromState].update,
-                    };
-
-                    graph[fromState].push(trans);
-                }
-            }
-        }}
-    }}
-    return graph;
-}
-
-function getAllStates(graph) {
-    const allStates = new Set();
-
-    for (const fromNode in graph) {
-        allStates.add(fromNode);
-        for (const transition of graph[fromNode]) {
-            allStates.add(transition.to);
-        }
-    }
-    return allStates;
-}
-
-function getTerminatingStates(graph) {
-    const allStates = getAllStates(graph);
-
-    return getTerminatingStatesInternal(allStates, graph);
-}
-
-function getTerminatingStatesInternal(allStates, graph) {
-
-    const terminating = new Set();
-
-    for (const state of allStates) {
-        if (!graph[state])
-            terminating.add(state);
-    }
-    return terminating;
-}
-
 function getTerminatingTransitions(property) {
-    const graph = propToGraph(property);
-    const terminating = getTerminatingStates(graph)
-
-    const terminatingTransitions = new Set();
-
-    for (const fromState in graph) {
-        for (const trans of graph[fromState]) {
-            if (terminating.has(trans.to)) {
-                terminatingTransitions.add(trans.transition);
-            }
-        }
-    }
-
-    return terminatingTransitions;
+    return Object.entries(property.stateMachine)
+        .filter(([key, value]) =>
+                Object.entries(value)
+                .some(([k2, v2]) => v2.to && (v2.to === 'FAILURE' || v2.to === 'SUCCESS'))
+               )
+        .map(([key, value]) => key)
 }
 
 function convertParams(params) {
