@@ -1,5 +1,7 @@
 const debug = process.env.DEBUG_WATCHTOWER;
+const profile = process.env.PROFILE_WATCHTOWER;
 const util = require('util');
+
 
 
 let reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
@@ -65,6 +67,9 @@ function runProperty(property, events, instance, fromStates) {
 
     let lastProcessedEvent;
 
+    let totalPaths = 1;
+    let maxPathWidth = 1;
+
     for (let i = 0; i < events.length; i++) {
         let e = events[i];
         let next = events[i+1];
@@ -90,6 +95,8 @@ function runProperty(property, events, instance, fromStates) {
             let trueBlock = block.length > 0;
 
             if (trueBlock) {
+                if (profile) totalPaths += block.length;
+
                 states = states.map(state => {
                     if (Object.keys(state.replacements).length === 0) { // No existing replacements. Simple.
                         return [state].concat(block.map(repIdx => {
@@ -125,6 +132,11 @@ function runProperty(property, events, instance, fromStates) {
             }
         }
 
+        if (profile) {
+            maxPathWidth = Math.max(maxPathWidth,...states.map(state => Object.keys(state.replacements).length));
+        }
+
+
         if (debug) console.log("Running the property.\nStates are: ", util.inspect(states));
 
         states = states.map(state => {
@@ -140,8 +152,6 @@ function runProperty(property, events, instance, fromStates) {
             const eventParamsDict = convertParams(stateSpecificEvent.params);
 
             // const eventInvocationUuid = e.invocation.S;
-
-
 
             // KALEV: This feature is only partially supported, and entirely not documented.
             // TODO: Add check to sanity to ensure that if there's ANY, there's nothing else.
@@ -219,6 +229,10 @@ function runProperty(property, events, instance, fromStates) {
         //     return acc;
         // }, []);
     }
+
+    if (profile) console.log(`@@@@WT_PROF: TOTAL CHECKED PATHS: ${totalPaths}`);
+    if (profile) console.log(`@@@@WT_PROF: MAXIMUM WIDTH: ${maxPathWidth}`);
+
     return {
         states,
         lastProcessedEvent,
