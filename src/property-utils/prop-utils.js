@@ -69,6 +69,7 @@ function runProperty(property, events, instance, fromStates) {
 
     let totalPaths = 1;
     let maxPathWidth = 1;
+    let pathWidths = [];
 
     for (let i = 0; i < events.length; i++) {
         let e = events[i];
@@ -131,11 +132,6 @@ function runProperty(property, events, instance, fromStates) {
                 });
             }
         }
-
-        if (profile) {
-            maxPathWidth = Math.max(maxPathWidth,...states.map(state => Object.keys(state.replacements).length));
-        }
-
 
         if (debug) console.log("Running the property.\nStates are: ", util.inspect(states));
 
@@ -214,6 +210,12 @@ function runProperty(property, events, instance, fromStates) {
             }
             return acc;
         }, []);
+
+        if (profile) {
+            maxPathWidth = Math.max(maxPathWidth,states.length);
+            pathWidths.push(states.length);
+        }
+
         // // remove coalescing states with equal replacements
         // //   Ignoring compound. (Let's call this step 2 of depracation. Can also say I don't remember what the point of that is anymore.)
         // states = states.reduce((acc, elem) => {
@@ -230,9 +232,13 @@ function runProperty(property, events, instance, fromStates) {
         // }, []);
     }
 
-    if (profile) console.log(`@@@@WT_PROF: TOTAL CHECKED PATHS: ${totalPaths}`);
-    if (profile) console.log(`@@@@WT_PROF: MAXIMUM WIDTH: ${maxPathWidth}`);
+    if (profile) {
+        const avgWidth = pathWidths.reduce((acc, elem) => acc + elem, 0) / pathWidths.length;
 
+        console.log(`@@@@WT_PROF: TOTAL CHECKED PATHS: --${totalPaths}--`);
+        console.log(`@@@@WT_PROF: MAXIMUM WIDTH: --${maxPathWidth}--`);
+        console.log(`@@@@WT_PROF: AVERAGE WIDTH: --${avgWidth}--`);
+    }
     return {
         states,
         lastProcessedEvent,
