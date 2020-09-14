@@ -36,7 +36,7 @@ function getTerminatingTransitions(property) {
 function convertParams(params) {
     const result = {};
     for (const param in params.M) {
-        console.log("converting", param);
+        // console.log("converting", param);
         if (params.M[param].S) result[param] = params.M[param].S;
         else if (params.M[param].N) result[param] = Number(params.M[param].N);
         else
