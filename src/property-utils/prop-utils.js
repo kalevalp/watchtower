@@ -6,6 +6,7 @@ const util = require('util');
 
 let reorderGranularity = process.env.WATCHTOWER_REORDER_GRANULARITY;
 if (!reorderGranularity) reorderGranularity = 10; // Default to 10ms granularity
+if (debug) console.log(`Running with a reorder granularity of ${reorderGranularity}`);
 
 function getInstance(prop, eventParams, eventType) {
     let params;
@@ -75,23 +76,31 @@ function runProperty(property, events, instance, fromStates) {
         let e = events[i];
         let next = events[i+1];
 
+        if (debug && next) console.log(`### Event timestamps are e: ${e.timestamp.N} and next: ${next.timestamp.N}.`);
 
         // Check if need to interleave histories
         if ( next &&
-             eventsTooClose(next, e)) {
+             eventsTooClose(next, e) ) {
+            if (debug) console.log(`Found events with close timestamps: ${e.timestamp.N} vs ${next.timestamp.N}. Event originators are e: ${e.invocation.S} and next: ${next.invocation.S}.`);
 
             // Find interleaving block
             let block = [];
             let currIdx = i + 1;
             let curr = events[currIdx]; // === next
 
+            if (debug) console.log(`Looking for interleaving block, e: ${e.timestamp.N} vs curr: ${curr.timestamp.N}. Event originators are e: ${e.invocation.S} and curr: ${curr.invocation.S}.`);
+
             while (curr &&
                    eventsTooClose(curr, e)) {
 
-                if ( e.invocation.S !== curr.invocation.S ) block.push[currIdx];
+                if ( e.invocation.S !== curr.invocation.S ) {
+                    if (debug) console.log(`Adding index to block: ${currIdx}`);
+                    block.push(currIdx);
+                }
                 currIdx++;
                 curr = events[currIdx];
             }
+            if (debug) console.log(`Found interleavings block: ${block}`);
 
             let trueBlock = block.length > 0;
 
@@ -108,7 +117,7 @@ function runProperty(property, events, instance, fromStates) {
                             newState.replacements[repIdx] = i;
 
                             return newState;
-                        })).flat();
+                        }));
                     } else { // Has existing replacements. A little more complicated.
                         return [state].concat(block.map(repIdx => {
                             const newState = {curr: state.curr,
@@ -130,10 +139,11 @@ function runProperty(property, events, instance, fromStates) {
                         }));
                     }
                 });
+                if (debug) console.log(`New states are: ${util.inspect(states)}.`)
             }
         }
 
-        if (debug) console.log("Running the property.\nStates are: ", util.inspect(states));
+        if (debug) console.log("Running the property${states.length > 0 ? ' with multiple state' : ''}.\nStates are: ", util.inspect(states));
 
         states = states.map(state => {
             let stateSpecificEvent;
