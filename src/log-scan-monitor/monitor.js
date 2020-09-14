@@ -2,7 +2,6 @@ const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
 // const ses = new aws.SES();
 const proputils = require('watchtower-property-utils');
-const bigint = require('big-integer'); // REOMVE when migrating to Node 10.
 
 const debug           = process.env.DEBUG_WATCHTOWER;
 const eventTable      = process.env['WATCHTOWER_EVENT_TABLE'];
@@ -10,10 +9,6 @@ const checkpointTable = process.env['WATCHTOWER_CHECKPOINT_TABLE'];
 
 const profile = process.env.PROFILE_WATCHTOWER;
 const ingestionTimeOut = process.env.PROCESSING_LAMBDA_TIMEOUT;
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function getEvents (collectedEvents, params) {
     if (debug) console.log("DDB call, getEvents: ", JSON.stringify(params));
@@ -110,9 +105,9 @@ function eventOrderComparator(a, b) {
 	const aparsed = a.id.S.match(idRegex);
 	const bparsed = b.id.S.match(idRegex);
 	if (aparsed && bparsed && aparsed[1] !== undefined && bparsed[1] !== undefined && aparsed[1] === bparsed[1]) {
-	    const aid = bigint(aparsed[2]);
-	    const bid = bigint(bparsed[2]);
-	    return aid.minus(bid).sign ? -1 : 1;
+	    const aid = BigInt(aparsed[2]);
+	    const bid = BigInt(bparsed[2]);
+	    return aid < bid ? -1 : 1;
 	} else {
 	    return 0;
 	}
@@ -198,7 +193,6 @@ function monitorFactory(properties) {
         }
 
         const preCallTime = Date.now();
-        // const preCallTime = Math.ceil(Date.now()/1000);
 
         for (const proj of prop.projections) {
 
@@ -237,8 +231,9 @@ function monitorFactory(properties) {
             .then(results => [].concat(...results)) // Return a single array consisting of all events.
             .then(results => produceOrders(results))
             .then(async order => {
-                if (debug) console.log("Events: ", JSON.stringify(order));
-                if (debug) console.log("Events.timestamps: ", JSON.stringify(order.map(e => e.timestamp)));
+                // if (debug) console.log("Events: ", JSON.stringify(order));
+                // if (debug) console.log("Number of processed events: ", order.length);
+                if (debug) console.log("Events.timestamps: ", JSON.stringify(order.map(e => e.timestamp.N)));
 
                 const stabilityTime = preCallTime - ingestionTimeOut*1000 - 1000; // preCallTime is in (ms), rest is in (s).
 
@@ -246,7 +241,8 @@ function monitorFactory(properties) {
 
                 const stableEvents = order.filter(e => Number(e.timestamp.N) < stabilityTime);
 
-                if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
+                if (debug) console.log(`Processing ${stableEvents.length} stable events out of a total of ${order.length} eventsץ`);
+                // if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
                 const postRunStatus = proputils.runProperty(prop, stableEvents, instance);
                 const states = postRunStatus.states;
@@ -299,8 +295,15 @@ function monitorFactory(properties) {
                 } else {
                     // Checkpoint the stable part of the instance execution
                     if (debug) console.log("Checkpointing stable. Last event: ", JSON.stringify(lastProcessedEvent));
-                    if (lastProcessedEvent && postRunStatus.states && lastProcessedEvent.timestamp && lastProcessedEvent.id)
-                        await updateInstanceStatus(proputils.getInstance(prop,instance), false, checkpointTable, postRunStatus.states.map(state => state.curr), lastProcessedEvent.timestamp.N, lastProcessedEvent.id.S);
+                    if (lastProcessedEvent && postRunStatus.states && lastProcessedEvent.timestamp && lastProcessedEvent.id) {
+                        await updateInstanceStatus(
+                            proputils.getInstance(prop,instance),
+                            false,
+                            checkpointTable,
+                            postRunStatus.states.map(state => state.curr),
+                            lastProcessedEvent.timestamp.N,
+                            lastProcessedEvent.id.S);
+                    }
                 }
 
                 // Mark TTL for all stable instance events (not projections).
