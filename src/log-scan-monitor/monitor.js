@@ -243,7 +243,7 @@ function monitorFactory(properties) {
 
                 const stableEvents = order.filter(e => Number(e.timestamp.N) < stabilityTime);
 
-                if (debug) console.log(`Processing ${stableEvents.length} stable events out of a total of ${order.length} eventsץ`);
+                if (debug) console.log(`Processing ${stableEvents.length} stable events out of a total of ${order.length} events.`);
                 // if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
                 const postRunStatus = proputils.runProperty(prop, stableEvents, instance);
