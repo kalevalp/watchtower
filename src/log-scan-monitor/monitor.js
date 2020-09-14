@@ -104,16 +104,16 @@ function eventOrderComparator(a, b) {
     const ats = Number(a.timestamp.N);
     const bts = Number(b.timestamp.N);
 
-    if (ats === bts) {
+    // Only tie-break on events from the same invocation
+    if (ats === bts && a.invocation.S === b.invocation.S) {
 	const idRegex = /^(.*)_([0-9]*$)/;
-	const aparsed = a.match(idRegex);
-	const bparsed = b.match(idRegex);
+	const aparsed = a.id.S.match(idRegex);
+	const bparsed = b.id.S.match(idRegex);
 	if (aparsed && bparsed && aparsed[1] !== undefined && bparsed[1] !== undefined && aparsed[1] === bparsed[1]) {
 	    const aid = bigint(aparsed[2]);
 	    const bid = bigint(bparsed[2]);
 	    return aid.minus(bid).sign ? -1 : 1;
 	} else {
-	    // TODO - implement mechanism for running all orderings
 	    return 0;
 	}
     } else {
@@ -124,7 +124,6 @@ function eventOrderComparator(a, b) {
 function produceOrders(eventList) {
     const sorted = eventList.sort(eventOrderComparator);
     return sorted;
-
 }
 
 function monitorFactory(properties) {
