@@ -53,7 +53,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
 }
 
 function updateInstanceStatus(instance, isDischarged, tableName, states, timestamp, eventID) {
-    if (debug) console.log("Updating instance status: ", JSON.stringify({instance, isDischarged, tableName, states, timestamp, eventID}));
+    // if (debug) console.log("Updating instance status: ", JSON.stringify({instance, isDischarged, tableName, states, timestamp, eventID}));
 
     const params = {};
     params.ExpressionAttributeNames = { "#ST": "Status" };
@@ -148,24 +148,28 @@ function monitorFactory(properties) {
 
         if (debug) console.log("Checkpoint is: ", JSON.stringify(checkpoint));
 
-        function updateInstanceExpiration(e) {
-            const params = {
-                Key: {
-                    propinst: e.propinst,
-                    id: e.id,
-                },
-                ExpressionAttributeNames: {
-                    "#TTL": "expiration"
-                },
-                ExpressionAttributeValues: {
-                    ":exp": {
-                        N: (Math.ceil(Date.now() / 1000) + 1).toString(), // Could go even safer and add lambda t/o instead of 1s.
-                    },
-                },
-                UpdateExpression: "SET #TTL = :exp",
-                TableName: eventTable,
-            };
-            return ddb.updateItem(params).promise();
+        function updateInstanceExpiration(events) {
+            if (debug) console.log(`Running updates for ${events.length} events.`)
+            for (const event of events) {
+                event.expiration = {
+                    N: (Math.ceil(Date.now() / 1000) + 1).toString(), // Could go even safer and add lambda t/o instead of 1s.
+                }
+            }
+
+            const batchList = []
+            for (let i = 0; i < events.length / 25 ; i++) {
+                batchList.push(events.slice(i*25, (i+1)*25));
+            }
+
+            return Promise.all(batchList.map((batch, idx) => {
+                if (debug) console.log(`Running updates for batch ${idx} of ${batchList.length}, with ${batch.length} events.`)
+
+                const params = {RequestItems: {}};
+                params.RequestItems[eventTable] = batch.map(item => ({PutRequest: { Item: item } }))
+
+                return ddb.batchWriteItem(params).promise()
+                    .then(() => {if (debug) console.log(`Finished updates for batch ${idx} of ${batchList.length}.`)});
+            }));
         }
 
         if (checkpoint.Item &&
@@ -187,9 +191,7 @@ function monitorFactory(properties) {
 
             if (debug) console.log("Marking events of discharged instance for deletion. events: ", JSON.stringify(events));
 
-            return Promise.all(events.filter(e => !e.expiration).map(e => {
-                return updateInstanceExpiration(e);
-            }));
+            return updateInstanceExpiration(events.filter(e => !e.expiration));
         }
 
         const preCallTime = Date.now();
@@ -307,8 +309,7 @@ function monitorFactory(properties) {
                 }
 
                 // Mark TTL for all stable instance events (not projections).
-                return Promise.all(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance)) // Removes projections
-                                   .map(e => updateInstanceExpiration(e)));
+                return updateInstanceExpiration(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance))) // Removes projections
             })
             .catch((err) => console.log(err));
     }
