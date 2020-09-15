@@ -246,7 +246,10 @@ function monitorFactory(properties) {
                 if (debug) console.log(`Processing ${stableEvents.length} stable events out of a total of ${order.length} events.`);
                 // if (debug) console.log("Stable events: ", JSON.stringify(stableEvents));
 
+                const preRunStart = Date.now();
                 const postRunStatus = proputils.runProperty(prop, stableEvents, instance);
+                if (profile) console.log(`Running time of entire property run phase: ${Date.now()-preRunStart}ms.`);
+
                 const states = postRunStatus.states;
                 const lastProcessedEvent = postRunStatus.lastProcessedEvent;
 
@@ -293,11 +296,14 @@ function monitorFactory(properties) {
                 if (states.some(state => ['FAILURE', 'SUCCESS'].includes(state.curr))) {
                     if (debug) console.log(`Discharged property. postRunStatus: `, JSON.stringify(postRunStatus));
                     // Mark instance as discharged
+                    const preUpdateTime = Date.now();
                     await updateInstanceStatus(proputils.getInstance(prop,instance), true, checkpointTable);
+                    if (profile) console.log(`Running time of discharged property update: ${Date.now()-preUpdateTime}ms.`);
                 } else {
                     // Checkpoint the stable part of the instance execution
                     if (debug) console.log("Checkpointing stable. Last event: ", JSON.stringify(lastProcessedEvent));
                     if (lastProcessedEvent && postRunStatus.states && lastProcessedEvent.timestamp && lastProcessedEvent.id) {
+                        const preUpdateTime = Date.now();
                         await updateInstanceStatus(
                             proputils.getInstance(prop,instance),
                             false,
@@ -305,11 +311,16 @@ function monitorFactory(properties) {
                             postRunStatus.states.map(state => state.curr),
                             lastProcessedEvent.timestamp.N,
                             lastProcessedEvent.id.S);
+                        if (profile) console.log(`Running time of active property update: ${Date.now()-preUpdateTime}ms.`);
                     }
                 }
 
                 // Mark TTL for all stable instance events (not projections).
-                return updateInstanceExpiration(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance))) // Removes projections
+                const preTTLUpdateTime = Date.now();
+                const retval = await updateInstanceExpiration(stableEvents.filter(e => e.propinst.S === proputils.getInstance(prop,instance))) // Removes projections
+                if (profile) console.log(`Running time of event TTL write: ${Date.now()-preTTLUpdateTime}ms.`);
+
+                return retval;
             })
             .catch((err) => console.log(err));
     }
