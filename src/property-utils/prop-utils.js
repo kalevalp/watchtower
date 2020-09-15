@@ -143,7 +143,7 @@ function runProperty(property, events, instance, fromStates) {
             }
         }
 
-        if (debug) console.log("Running the property${states.length > 0 ? ' with multiple state' : ''}.\nStates are: ", util.inspect(states));
+        if (debug) console.log(`Running the property${states.length > 0 ? ' with multiple state' : ''}.\nStates are: ${util.inspect(states)}`);
 
         states = states.map(state => {
             let stateSpecificEvent;
