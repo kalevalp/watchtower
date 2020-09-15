@@ -76,25 +76,27 @@ function runProperty(property, events, instance, fromStates) {
         let e = events[i];
         let next = events[i+1];
 
-        if (debug && next) console.log(`### Event timestamps are e: ${e.timestamp.N} and next: ${next.timestamp.N}.`);
+        // if (debug && next) console.log(`### Event timestamps are e: ${e.timestamp.N} and next: ${next.timestamp.N}.`);
 
+        const interleaveStart = Date.now();
         // Check if need to interleave histories
         if ( next &&
              eventsTooClose(next, e) ) {
-            if (debug) console.log(`Found events with close timestamps: ${e.timestamp.N} vs ${next.timestamp.N}. Event originators are e: ${e.invocation.S} and next: ${next.invocation.S}.`);
+            // if (debug) console.log(`Found events with close timestamps: ${e.timestamp.N} vs ${next.timestamp.N}. Event originators are e: ${e.invocation.S} and next: ${next.invocation.S}.`);
 
             // Find interleaving block
             let block = [];
             let currIdx = i + 1;
             let curr = events[currIdx]; // === next
 
-            if (debug) console.log(`Looking for interleaving block, e: ${e.timestamp.N} vs curr: ${curr.timestamp.N}. Event originators are e: ${e.invocation.S} and curr: ${curr.invocation.S}.`);
+            // if (debug) console.log(`Looking for interleaving block, e: ${e.timestamp.N} vs curr: ${curr.timestamp.N}. Event originators are e: ${e.invocation.S} and curr: ${curr.invocation.S}.`);
 
             while (curr &&
                    eventsTooClose(curr, e)) {
 
-                if ( e.invocation.S !== curr.invocation.S ) {
-                    if (debug) console.log(`Adding index to block: ${currIdx}`);
+                if ( e.invocation.S !== curr.invocation.S &&
+                     e.type.S !== curr.type.S ) {
+                    // if (debug) console.log(`Adding index to block: ${currIdx}`);
                     block.push(currIdx);
                 }
                 currIdx++;
@@ -109,7 +111,7 @@ function runProperty(property, events, instance, fromStates) {
 
                 states = states.map(state => {
                     if (Object.keys(state.replacements).length === 0) { // No existing replacements. Simple.
-                        return [state].concat(block.map(repIdx => {
+                        return [state].concat( block.map(repIdx => {
                             const newState = {curr: state.curr,
                                               compound: state.compound};
                             newState.replacements = {};
@@ -139,14 +141,19 @@ function runProperty(property, events, instance, fromStates) {
                         }));
                     }
                 });
+                states = [].concat(...states);
                 if (debug) console.log(`New states are: ${util.inspect(states)}.`)
             }
         }
 
+        if (profile) console.log(`Running time of interleave construction phase: ${Date.now()-interleaveStart}ms.`);
+
         if (debug) console.log(`Running the property${states.length > 0 ? ' with multiple state' : ''}.\nStates are: ${util.inspect(states)}`);
 
+        const stateExecutionStart = Date.now();
         states = states.map(state => {
             let stateSpecificEvent;
+            if (debug) console.log(`Working on state: ${util.inspect(state)}. st.reps is: ${util.inspect(state.replacements)}.`);
             if (state.replacements[i]) {
                 stateSpecificEvent = events[state.replacements[i]];
                 delete state.replacements[i];
@@ -209,6 +216,8 @@ function runProperty(property, events, instance, fromStates) {
             }
             return state;
         });
+
+        if (profile) console.log(`Running time of state execution phase: ${Date.now()-stateExecutionStart}ms.`);
 
         // Remove coalescing states with no replacements
         states = states.reduce((acc,elem) => {
