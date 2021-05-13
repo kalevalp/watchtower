@@ -56,13 +56,13 @@ function runProperty(property, events, instance, fromStates) {
         states = [{
             curr: 'INITIAL',
             compound: property.getNewCompoundState ? property.getNewCompoundState() : {},
-            replacements: [],
+            replacements: {},
         }];
     } else {
         states = fromStates.map(fromState => ({
 	    curr: fromState.curr,
 	    compound: JSON.parse(JSON.stringify(fromState.compound)),
-            replacements: [],
+            replacements: {},
 	}));
     }
 
@@ -109,21 +109,29 @@ function runProperty(property, events, instance, fromStates) {
             if (trueBlock) {
                 if (profile) totalPaths += block.length;
 
-                states = states.map(state => {
+                const statesReplaced = []
+
+                for (const state of states) {
+                    statesReplaced.push(state)
                     if (Object.keys(state.replacements).length === 0) { // No existing replacements. Simple.
-                        return [state].concat( block.map(repIdx => {
-                            const newState = {curr: state.curr,
-                                              compound: state.compound};
+                        for (const repIdx of block) {
+                            const newState = {
+                                curr: state.curr,
+                                compound: state.compound
+                            }
+
                             newState.replacements = {};
                             newState.replacements[i] = repIdx;
                             newState.replacements[repIdx] = i;
 
-                            return newState;
-                        }));
+                            statesReplaced.push(newState)
+                        }
                     } else { // Has existing replacements. A little more complicated.
-                        return [state].concat(block.map(repIdx => {
-                            const newState = {curr: state.curr,
-                                              compound: state.compound};
+                        for (const repIdx of block) {
+                            const newState = {
+                                curr: state.curr,
+                                compound: state.compound
+                            }
 
                             newState.replacements = {};
 
@@ -137,12 +145,27 @@ function runProperty(property, events, instance, fromStates) {
 
                             newState.replacements[repIdx] = i;
 
-                            return newState;
-                        }));
+                            statesReplaced.push(newState)
+                        }
                     }
-                });
-                states = [].concat(...states);
-                if (debug) console.log(`New states are: ${util.inspect(states)}.`)
+                }
+
+                let preInitialStateReduction
+                if (profile) preInitialStateReduction = Date.now()
+
+                const stateStrings = statesReplaced.map(state => JSON.stringify(state))
+
+                if (profile) console.log(`Stringify stage of initial reduction took ${Date.now()-preInitialStateReduction}ms`)
+
+                states = statesReplaced.filter((state, idx) => {
+                    let currStateString = stateStrings[idx];
+                    if (stateStrings.indexOf(currStateString) === idx) {
+                        return state;
+                    }
+                })
+
+                if (profile) console.log(`Entire initial reduction took ${Date.now()-preInitialStateReduction}ms`)
+                if (profile) console.log(`Entire initial reduction went from ${stateStrings.length} to ${states.length} states.`)
             }
         }
 
@@ -150,10 +173,12 @@ function runProperty(property, events, instance, fromStates) {
 
         if (debug) console.log(`Running the property${states.length > 0 ? ' with multiple state' : ''}.\nStates are: ${util.inspect(states)}`);
 
-        const stateExecutionStart = Date.now();
-        states = states.map(state => {
+        let stateExecutionStart
+        if (profile) stateExecutionStart = Date.now()
+
+        states.forEach(state => {
             let stateSpecificEvent;
-            if (debug) console.log(`Working on state: ${util.inspect(state)}. st.reps is: ${util.inspect(state.replacements)}.`);
+            // if (debug) console.log(`Working on state: ${util.inspect(state)}. st.reps is: ${util.inspect(state.replacements)}.`);
             if (state.replacements[i]) {
                 stateSpecificEvent = events[state.replacements[i]];
                 delete state.replacements[i];
@@ -214,27 +239,41 @@ function runProperty(property, events, instance, fromStates) {
                 // if (toState in ['FAILURE', 'SUCCESS']) // TODO - Optimize a run reaching a terminal
                 //     break;
             }
-            return state;
+            // return state;
         });
 
         if (profile) console.log(`Running time of state execution phase: ${Date.now()-stateExecutionStart}ms.`);
 
-        // Remove coalescing states with no replacements
-        states = states.reduce((acc,elem) => {
-            if (Object.keys(elem.replacements).length !== 0 || // Keep if has replacements
-                !acc.some(other =>
-                          other.curr === elem.curr && // States coalesce
-                          Object.keys(other.replacements).length === 0)) { // And other state also has no replacements
-                acc.push(elem);
+        // // Remove coalescing states with no replacements
+        // states = states.reduce((acc,elem) => {
+        //     if (Object.keys(elem.replacements).length !== 0 || // Keep if has replacements
+        //         !acc.some(other =>
+        //                   other.curr === elem.curr && // States coalesce
+        //                   Object.keys(other.replacements).length === 0)) { // And other state also has no replacements
+        //         acc.push(elem);
+        //     }
+        //     return acc;
+        // }, []);
+
+        let preFinalStateReduction
+        if (profile) preFinalStateReduction = Date.now()
+
+        const stateStrings = states.map(state => JSON.stringify(state))
+
+        if (profile) console.log(`Stringify stage of final reduction took ${Date.now()-preFinalStateReduction}ms`)
+
+        states = states.filter((state, idx) => {
+            let currStateString = stateStrings[idx];
+            if (stateStrings.indexOf(currStateString) === idx) {
+                return state;
             }
-            return acc;
-        }, []);
+        })
 
-        if (profile) {
-            maxPathWidth = Math.max(maxPathWidth,states.length);
-            pathWidths.push(states.length);
-        }
+        if (profile) console.log(`Entire final reduction took ${Date.now()-preFinalStateReduction}ms`)
+        if (profile) console.log(`Entire final reduction went from ${stateStrings.length} to ${states.length} states.`)
 
+        // let convergenceStart
+        // if (profile) convergenceStart = Date.now()
         // // remove coalescing states with equal replacements
         // //   Ignoring compound. (Let's call this step 2 of depracation. Can also say I don't remember what the point of that is anymore.)
         // states = states.reduce((acc, elem) => {
@@ -245,10 +284,17 @@ function runProperty(property, events, instance, fromStates) {
         //                                                          acc &&
         //                                                          elem.replacements[idx] === curr,
         //                                                          true))) {
-        //         acc.push(curr);
+        //         acc.push(elem);
         //     }
         //     return acc;
         // }, []);
+        //
+        // if (profile) console.log(`Running time of state list dedup phase: ${Date.now()-convergenceStart}ms.`);
+
+        if (profile) {
+            maxPathWidth = Math.max(maxPathWidth,states.length);
+            pathWidths.push(states.length);
+        }
     }
 
     if (profile) {

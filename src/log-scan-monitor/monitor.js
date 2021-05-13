@@ -2,6 +2,7 @@ const aws = require('aws-sdk');
 const ddb = new aws.DynamoDB();
 // const ses = new aws.SES();
 const proputils = require('watchtower-property-utils');
+const util = require('util');
 
 const debug           = process.env.DEBUG_WATCHTOWER;
 const eventTable      = process.env['WATCHTOWER_EVENT_TABLE'];
@@ -38,7 +39,7 @@ function kinesisListenerFactory (handleMonitorInstance) {
             const instStr = Buffer.from(record.kinesis.data,'base64').toString();
             if (!invokedInstances.includes(instStr)){
                 const inst = JSON.parse(instStr);
-		const triggerStartTime = event.triggerStartTime ? event.triggerStartTime : checkerFunctionInvokeTime;
+                const triggerStartTime = event.triggerStartTime ? event.triggerStartTime : checkerFunctionInvokeTime;
                 monitorInstances.push(handleMonitorInstance(inst, record.kinesis.approximateArrivalTimestamp, checkerFunctionInvokeTime, triggerStartTime));
                 invokedInstances.push(instStr);
             } else {
@@ -46,7 +47,10 @@ function kinesisListenerFactory (handleMonitorInstance) {
             }
         }
 
-        if (debug) console.log("Monitored instances: ", JSON.stringify(event.Records.map(record => Buffer.from(record.kinesis.data,'base64').toString())));
+        // if (debug) console.log("Monitored instances: ", JSON.stringify(event.Records.map(record => Buffer.from(record.kinesis.data,'base64').toString())));
+
+        if (debug) console.log(`Total monitored instance count: ${monitorInstances.length}`)
+        if (debug) console.log(`List of invoked instances: ${util.inspect(invokedInstances)}`)
 
         return Promise.all(monitorInstances).then(() => event);
     }
@@ -129,8 +133,8 @@ function monitorFactory(properties) {
     return async function(trigger, instanceTriggerKinesisTime, checkerFunctionInvokeTime, triggerStartTime) {
         if (debug) console.log("Running checker");
 
-	const prop = properties.find(p => p.name === trigger.propname);
-	const instance = trigger.instance;
+        const prop = properties.find(p => p.name === trigger.propname);
+        const instance = trigger.instance;
 
 
         const ddbCalls = [];
