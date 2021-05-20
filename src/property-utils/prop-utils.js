@@ -50,6 +50,12 @@ function eventsTooClose(eventA, eventB) {
     return Math.abs(Number(eventA.timestamp.N) - Number(eventB.timestamp.N)) <= reorderGranularity;
 }
 
+function factorial(n) {
+    let ret = 1n
+    for (let i = 2n; i <= n; i++) ret = ret * i
+    return ret
+}
+
 function runProperty(property, events, instance, fromStates) {
     let states;
     if (!fromStates) {
@@ -68,9 +74,11 @@ function runProperty(property, events, instance, fromStates) {
 
     let lastProcessedEvent;
 
-    let totalPaths = 1;
-    let maxPathWidth = 1;
-    let pathWidths = [];
+    let totalPaths = 1n
+    let maxPathWidth = 1
+
+    let avgWidth = 0
+    let widthCount = 0
 
     for (let i = 0; i < events.length; i++) {
         let e = events[i];
@@ -107,7 +115,7 @@ function runProperty(property, events, instance, fromStates) {
             let trueBlock = block.length > 0;
 
             if (trueBlock) {
-                if (profile) totalPaths += block.length;
+                if (profile) totalPaths = totalPaths * (BigInt(block.length) + 1n);
 
                 const statesReplaced = []
 
@@ -244,17 +252,6 @@ function runProperty(property, events, instance, fromStates) {
 
         if (profile) console.log(`Running time of state execution phase: ${Date.now()-stateExecutionStart}ms.`);
 
-        // // Remove coalescing states with no replacements
-        // states = states.reduce((acc,elem) => {
-        //     if (Object.keys(elem.replacements).length !== 0 || // Keep if has replacements
-        //         !acc.some(other =>
-        //                   other.curr === elem.curr && // States coalesce
-        //                   Object.keys(other.replacements).length === 0)) { // And other state also has no replacements
-        //         acc.push(elem);
-        //     }
-        //     return acc;
-        // }, []);
-
         let preFinalStateReduction
         if (profile) preFinalStateReduction = Date.now()
 
@@ -272,37 +269,18 @@ function runProperty(property, events, instance, fromStates) {
         if (profile) console.log(`Entire final reduction took ${Date.now()-preFinalStateReduction}ms`)
         if (profile) console.log(`Entire final reduction went from ${stateStrings.length} to ${states.length} states.`)
 
-        // let convergenceStart
-        // if (profile) convergenceStart = Date.now()
-        // // remove coalescing states with equal replacements
-        // //   Ignoring compound. (Let's call this step 2 of depracation. Can also say I don't remember what the point of that is anymore.)
-        // states = states.reduce((acc, elem) => {
-        //     if (!acc.some(other =>
-        //                   other.curr === elem.curr &&
-        //                   Object.keys(other.replacements).length === Object.keys(elem.replacements).length &&
-        //                   Object.keys(other.replacements).reduce((acc, curr, idx) =>
-        //                                                          acc &&
-        //                                                          elem.replacements[idx] === curr,
-        //                                                          true))) {
-        //         acc.push(elem);
-        //     }
-        //     return acc;
-        // }, []);
-        //
-        // if (profile) console.log(`Running time of state list dedup phase: ${Date.now()-convergenceStart}ms.`);
-
         if (profile) {
-            maxPathWidth = Math.max(maxPathWidth,states.length);
-            pathWidths.push(states.length);
+            maxPathWidth = Math.max(maxPathWidth,states.length)
+
+            widthCount++
+            avgWidth = avgWidth + (states.length - avgWidth) / widthCount
         }
     }
 
     if (profile) {
-        const avgWidth = pathWidths.reduce((acc, elem) => acc + elem, 0) / pathWidths.length;
-
-        console.log(`@@@@WT_PROF: TOTAL CHECKED PATHS: --${totalPaths}--`);
-        console.log(`@@@@WT_PROF: MAXIMUM WIDTH: --${maxPathWidth}--`);
-        console.log(`@@@@WT_PROF: AVERAGE WIDTH: --${avgWidth}--`);
+        console.log(`@@@@WT_PROF: PATHS REPORT - TOTAL CHECKED PATHS: --${totalPaths}--`);
+        console.log(`@@@@WT_PROF: PATHS REPORT - MAXIMUM WIDTH: --${maxPathWidth}--`);
+        console.log(`@@@@WT_PROF: PATHS REPORT - AVERAGE WIDTH: --${avgWidth}--`);
     }
     return {
         states,
